@@ -28,7 +28,7 @@ export default async function AdminCasesPage() {
   const db = getServiceClient()
   const { data: cases } = await db
     .from('cases')
-    .select('id, public_reference, topic, status, initiator_name, recipient_name, created_at')
+    .select('id, public_reference, topic, status, initiator_name, recipient_name, created_at, conversation_mode')
     .order('created_at', { ascending: false })
 
   return (
@@ -42,7 +42,7 @@ export default async function AdminCasesPage() {
         {cases?.map((c) => (
           <Link
             key={c.id}
-            href={`/admin/cases/${c.id}`}
+            href={c.conversation_mode === 'meeting_mediation' ? `/admin/meetings/${c.id}` : `/admin/cases/${c.id}`}
             className="bg-white border border-outline-variant rounded-xl p-4 flex flex-col gap-2 hover:border-primary transition-colors"
           >
             <div className="flex items-start justify-between gap-3">

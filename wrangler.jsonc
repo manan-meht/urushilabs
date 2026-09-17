@@ -20,6 +20,17 @@
     "NEXT_PUBLIC_APP_URL": "https://urushilabs.com",
     "OPENAI_MODEL": "gpt-4o",
     "OPENAI_TRANSCRIPTION_MODEL": "whisper-1",
-    "DEMO_MODE": "false"
+    "DEMO_MODE": "false",
+    "LIVE_MEDIATION_ENABLED": "false",
+    "LIVE_MEDIATION_ALLOWED_EMAILS": "",
+    "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
+    "OPENAI_REALTIME_TRANSCRIBE_MODEL": "gpt-4o-transcribe",
+    "OPENAI_REALTIME_VOICE": "marin",
+    "OPENAI_REALTIME_TRANSCRIBE_LANGUAGES": "en,hi",
+    "MEETING_MEDIATION_ENABLED": "false",
+    "MEETING_MEDIATION_ALLOWED_EMAILS": "mananenator@gmail.com",
+    "RECALL_API_BASE_URL": "https://ap-northeast-1.recall.ai/api/v1",
+    "RECALL_WEBHOOK_URL": "https://urushilabs.com/api/integrations/recall/webhook",
+    "RECALL_BOT_NAME": "Urushi — AI Mediator"
   }
 }

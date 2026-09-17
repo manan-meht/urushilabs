@@ -133,6 +133,130 @@ export const TogetherOptionResponseSchema = z.object({
 })
 export type TogetherOptionResponseInput = z.infer<typeof TogetherOptionResponseSchema>
 
+// ─── Room Mode (Live Mediation) ────────────────────────────────────────────────
+export const CreateRoomSessionSchema = z.object({
+  participantNames: z
+    .array(z.string().trim().min(1, 'Name is required.').max(80))
+    .min(2, 'At least 2 participants are required.')
+    .max(3, 'Live Mediation currently supports up to 3 participants.'),
+  topic: z
+    .string()
+    .trim()
+    .min(5, 'Please describe the topic in at least 5 characters.')
+    .max(120, 'Topic must be 120 characters or fewer.'),
+  contextSummary: z.string().trim().max(4000).optional(),
+  sourceCaseReference: z.string().trim().max(40).optional(),
+})
+export type CreateRoomSessionInput = z.infer<typeof CreateRoomSessionSchema>
+
+export const RoomConsentSchema = z.object({
+  confirmedVoluntary: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+  confirmedAiMediator: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+  confirmedComfortableListening: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+  confirmedNoIntimidation: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+})
+export type RoomConsentInput = z.infer<typeof RoomConsentSchema>
+
+export const RoomCalibrateSchema = z.object({
+  diarizationLabel: z.string().trim().min(1).max(20),
+  confidence: z.number().min(0).max(1).optional(),
+})
+export type RoomCalibrateInput = z.infer<typeof RoomCalibrateSchema>
+
+export const RoomInterveneSchema = z.object({
+  content: z.string().trim().min(1).max(2000),
+  speakerParticipantId: z.string().uuid().optional(),
+  diarizationSpeakerLabel: z.string().max(20).optional(),
+  speakerConfidence: z.number().min(0).max(1).optional(),
+})
+export type RoomInterveneInput = z.infer<typeof RoomInterveneSchema>
+
+export const RoomAgreementConfirmSchema = z.object({
+  participantId: z.string().uuid(),
+})
+export type RoomAgreementConfirmInput = z.infer<typeof RoomAgreementConfirmSchema>
+
+export const PairRoomDeviceSchema = z.object({
+  label: z.string().trim().max(80).optional(),
+})
+export type PairRoomDeviceInput = z.infer<typeof PairRoomDeviceSchema>
+
+// ─── Meeting Mediation (Google Meet / Zoom, via a meeting-bot provider) ────────
+const GOOGLE_MEET_URL_PATTERN = /^https:\/\/meet\.google\.com\/[a-z0-9-]+(\?.*)?$/i
+const ZOOM_URL_PATTERN = /^https:\/\/([a-z0-9-]+\.)?zoom\.us\/(j|my|s)\/[a-zA-Z0-9?&=._-]+$/i
+
+export function detectMeetingPlatform(url: string): 'google_meet' | 'zoom' | null {
+  const trimmed = url.trim()
+  if (GOOGLE_MEET_URL_PATTERN.test(trimmed)) return 'google_meet'
+  if (ZOOM_URL_PATTERN.test(trimmed)) return 'zoom'
+  return null
+}
+
+export const MeetingParticipantInputSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required.').max(80),
+  email: z.string().trim().email('Please enter a valid email address.').max(200),
+})
+export type MeetingParticipantInput = z.infer<typeof MeetingParticipantInputSchema>
+
+/**
+ * How Urushi behaves, sounds and intervenes (see src/lib/meeting/agentSettings.ts).
+ * Every field is optional so existing clients that don't send it keep working —
+ * omitted fields resolve to DEFAULT_MEETING_AGENT_SETTINGS server-side.
+ */
+export const MeetingAgentSettingsSchema = z.object({
+  personality: z.enum(['chair', 'straight_shooter']).optional(),
+  voiceGender: z.enum(['female', 'male']).optional(),
+  region: z.enum(['american', 'singaporean', 'indian']).optional(),
+  language: z.enum(['english', 'hindi', 'hinglish', 'auto']).optional(),
+  interventionLevel: z.enum(['observer', 'facilitator', 'chair']).optional(),
+  languageStyle: z.enum(['clean', 'direct', 'unfiltered']).optional(),
+})
+export type MeetingAgentSettingsInput = z.infer<typeof MeetingAgentSettingsSchema>
+
+export const CreateMeetingSessionSchema = z.object({
+  participants: z
+    .array(MeetingParticipantInputSchema)
+    .min(2, 'At least 2 participants are required.')
+    .max(3, 'Meeting Mediation currently supports up to 3 participants.'),
+  topic: z
+    .string()
+    .trim()
+    .min(5, 'Please describe the topic in at least 5 characters.')
+    .max(120, 'Topic must be 120 characters or fewer.'),
+  contextSummary: z.string().trim().max(4000).optional(),
+  agentSettings: MeetingAgentSettingsSchema.optional(),
+})
+export type CreateMeetingSessionInput = z.infer<typeof CreateMeetingSessionSchema>
+
+export const UpdateMeetingDetailsSchema = z.object({
+  meetingUrl: z.string().trim().max(500).refine(
+    (url) => detectMeetingPlatform(url) !== null,
+    { message: 'Please enter a valid Google Meet or Zoom link.' }
+  ),
+  scheduledStartAt: z.string().datetime().optional(),
+  timezone: z.string().max(80).optional(),
+  startNow: z.boolean().default(false),
+})
+export type UpdateMeetingDetailsInput = z.infer<typeof UpdateMeetingDetailsSchema>
+
+export const MeetingConsentSchema = z.object({
+  confirmedAiMediator: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+  confirmedListeningAndProcessing: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+  confirmedMaySpeak: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+  confirmedVoluntary: z.literal(true, { errorMap: () => ({ message: 'All participants must confirm.' }) }),
+})
+export type MeetingConsentInput = z.infer<typeof MeetingConsentSchema>
+
+export const MeetingParticipantContextSchema = z.object({
+  perspective: z.string().trim().min(1, 'Please share at least a little context.').max(8000),
+})
+export type MeetingParticipantContextInput = z.infer<typeof MeetingParticipantContextSchema>
+
+export const MeetingAgreementConfirmSchema = z.object({
+  participantId: z.string().uuid(),
+})
+export type MeetingAgreementConfirmInput = z.infer<typeof MeetingAgreementConfirmSchema>
+
 // ─── Feedback ─────────────────────────────────────────────────────────────────
 export const ReportFeedbackSchema = z.object({
   representationRating: z.enum(['accurately', 'partly', 'not']),

@@ -20,6 +20,19 @@ export interface EnvConfig {
   WHATSAPP_API_VERSION?: string
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
+  LIVE_MEDIATION_ENABLED: boolean
+  LIVE_MEDIATION_ALLOWED_EMAILS: string
+  OPENAI_REALTIME_MODEL: string
+  OPENAI_REALTIME_TRANSCRIBE_MODEL: string
+  OPENAI_REALTIME_VOICE: string
+  OPENAI_REALTIME_TRANSCRIBE_LANGUAGES: string
+  MEETING_MEDIATION_ENABLED: boolean
+  MEETING_MEDIATION_ALLOWED_EMAILS: string
+  RECALL_API_KEY?: string
+  RECALL_API_BASE_URL: string
+  RECALL_WEBHOOK_SECRET?: string
+  RECALL_WEBHOOK_URL?: string
+  RECALL_BOT_NAME: string
 }
 
 const REQUIRED_VARS = [
@@ -79,5 +92,28 @@ export function getEnv(): EnvConfig {
     WHATSAPP_API_VERSION: process.env['WHATSAPP_API_VERSION'] ?? 'v21.0',
     RESEND_API_KEY: process.env['RESEND_API_KEY'],
     EMAIL_FROM: process.env['EMAIL_FROM'],
+    LIVE_MEDIATION_ENABLED: process.env['LIVE_MEDIATION_ENABLED'] === 'true',
+    LIVE_MEDIATION_ALLOWED_EMAILS: process.env['LIVE_MEDIATION_ALLOWED_EMAILS'] ?? '',
+    OPENAI_REALTIME_MODEL: process.env['OPENAI_REALTIME_MODEL'] ?? 'gpt-realtime-2.1',
+    // Defaults to the broadly-available transcription model, not the diarization
+    // variant — confirmed against a real account that 'gpt-4o-transcribe-diarize'
+    // access is not universal ("Your organization does not have access to this
+    // transcription model"). Diarization is already designed as best-effort
+    // throughout Room Mode (see roomPrompt.ts's calibration step) — set this env
+    // var explicitly to 'gpt-4o-transcribe-diarize' for accounts that do have access.
+    OPENAI_REALTIME_TRANSCRIBE_MODEL: process.env['OPENAI_REALTIME_TRANSCRIBE_MODEL'] ?? 'gpt-4o-transcribe',
+    OPENAI_REALTIME_VOICE: process.env['OPENAI_REALTIME_VOICE'] ?? process.env['OPENAI_TTS_VOICE'] ?? 'marin',
+    // Comma-separated ISO-639-1 codes the transcriber may pick between. Defaults to
+    // English + Hindi: Room Mode is used bilingually, and leaving this unconstrained
+    // made real room audio get transcribed as Icelandic/Japanese. Set to a single
+    // code to pin one language, or empty to leave it fully unconstrained.
+    OPENAI_REALTIME_TRANSCRIBE_LANGUAGES: process.env['OPENAI_REALTIME_TRANSCRIBE_LANGUAGES'] ?? 'en,hi',
+    MEETING_MEDIATION_ENABLED: process.env['MEETING_MEDIATION_ENABLED'] === 'true',
+    MEETING_MEDIATION_ALLOWED_EMAILS: process.env['MEETING_MEDIATION_ALLOWED_EMAILS'] ?? '',
+    RECALL_API_KEY: process.env['RECALL_API_KEY'],
+    RECALL_API_BASE_URL: process.env['RECALL_API_BASE_URL'] ?? 'https://us-east-1.recall.ai/api/v1',
+    RECALL_WEBHOOK_SECRET: process.env['RECALL_WEBHOOK_SECRET'],
+    RECALL_WEBHOOK_URL: process.env['RECALL_WEBHOOK_URL'],
+    RECALL_BOT_NAME: process.env['RECALL_BOT_NAME'] ?? 'Urushi — AI Mediator',
   }
 }

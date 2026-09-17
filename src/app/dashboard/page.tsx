@@ -16,17 +16,17 @@ export default async function DashboardPage() {
     getOrCreateCredits(user.id),
     db
       .from('cases')
-      .select('id, public_reference, topic, status, initiator_name, recipient_name, created_at')
+      .select('id, public_reference, topic, status, initiator_name, recipient_name, created_at, conversation_mode')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
     db
       .from('participants')
-      .select('case_id, cases(id, public_reference, topic, status, initiator_name, recipient_name, created_at)')
+      .select('case_id, cases(id, public_reference, topic, status, initiator_name, recipient_name, created_at, conversation_mode)')
       .eq('user_id', user.id),
   ])
 
   // Merge initiated + recipient cases, deduplicate by id
-  type RawCase = { id: string; public_reference: string; topic: string; status: string; initiator_name: string; recipient_name: string; created_at: string }
+  type RawCase = { id: string; public_reference: string; topic: string; status: string; initiator_name: string; recipient_name: string; created_at: string; conversation_mode: string }
   type CaseRow = RawCase & { userRole: 'initiator' | 'recipient' }
 
   const initiatedIds = new Set((initiatedResult.data ?? []).map((c) => c.id))

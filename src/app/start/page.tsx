@@ -3,8 +3,10 @@ import { redirect } from 'next/navigation'
 import { SiteHeader, SiteFooter } from '@/components/SiteHeader'
 import { ModeSelector } from './ModeSelector'
 import { getUser } from '@/lib/supabase/server'
+import { getServiceClient } from '@/lib/db/client'
 import { getOrCreateCredits } from '@/lib/db/credits'
 import { extractFirstName } from '@/lib/invitation'
+import { isLiveMediationEnabled, isMeetingMediationEnabled } from '@/lib/featureFlags'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
@@ -25,6 +27,20 @@ export default async function StartPage() {
     'you'
   const firstName = extractFirstName(fullName)
   const userEmail = user.email ?? null
+  const liveMediationEnabled = isLiveMediationEnabled(userEmail)
+  const meetingMediationEnabled = isMeetingMediationEnabled(userEmail)
+
+  let existingCases: Array<{ reference: string; topic: string }> = []
+  if (liveMediationEnabled) {
+    const db = getServiceClient()
+    const { data } = await db
+      .from('cases')
+      .select('public_reference, topic')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+    existingCases = (data ?? []).map((c) => ({ reference: c.public_reference, topic: c.topic }))
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -44,6 +60,9 @@ export default async function StartPage() {
             userFirstName={firstName}
             userEmail={userEmail}
             roomsRemaining={credits.rooms_available}
+            liveMediationEnabled={liveMediationEnabled}
+            meetingMediationEnabled={meetingMediationEnabled}
+            existingCases={existingCases}
           />
         ) : (
           <div className="max-w-md mx-auto px-margin-mobile py-stack-md text-center">

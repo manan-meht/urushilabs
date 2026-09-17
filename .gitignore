@@ -23,3 +23,13 @@ test-results/
 *.pem
 .vercel
 *.log
+
+# cloudflare build output / local state
+.open-next/
+.wrangler/
+
+# supabase cli scratch
+supabase/.temp/
+
+# incremental typecheck cache
+tsconfig.tsbuildinfo

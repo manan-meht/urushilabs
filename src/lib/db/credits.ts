@@ -42,7 +42,11 @@ export async function consumeRoomCredit(userId: string): Promise<boolean> {
   // Ensure record exists
   await getOrCreateCredits(userId)
 
-  const { data } = await db.rpc('consume_room_credit', { p_user_id: userId })
+  const { data, error } = await db.rpc('consume_room_credit', { p_user_id: userId })
+  if (error) {
+    console.error('[consumeRoomCredit] RPC error:', error.message)
+    throw error
+  }
   return data === true
 }
 

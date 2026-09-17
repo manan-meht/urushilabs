@@ -37,6 +37,7 @@ export interface CaseRow {
   initiator_name: string
   recipient_name: string
   created_at: string
+  conversation_mode: string
   userRole: 'initiator' | 'recipient'
 }
 
@@ -44,13 +45,28 @@ export function CaseList({ cases }: { cases: CaseRow[] }) {
   const router = useRouter()
 
   async function openCase(caseId: string) {
+    const c = cases.find((x) => x.id === caseId)
+
+    // Room and Meeting Mediation cases authenticate directly via the Supabase
+    // user session on their own pages — they don't have a `participants` row
+    // (that table is classic invited/together-mode only), so the cg_session
+    // restore flow below would 404 for them. Their landing pages self-redirect
+    // to the correct stage/status internally.
+    if (c?.conversation_mode === 'room') {
+      router.push(`/room/${c.public_reference}/ready`)
+      return
+    }
+    if (c?.conversation_mode === 'meeting_mediation') {
+      router.push(`/meeting/${c.public_reference}/status`)
+      return
+    }
+
     const res = await fetch(`/api/cases/${caseId}/session`, { method: 'POST' })
     if (res.ok) {
       const { destination } = await res.json() as { destination: string }
       router.push(destination)
     } else {
       // Fallback: navigate anyway and let the page handle it
-      const c = cases.find((x) => x.id === caseId)
       if (c) {
         const isReady = ['report_ready', 'needs_safety_review'].includes(c.status)
         const isActive = ['awaiting_recipient', 'ready_for_analysis', 'analysing'].includes(c.status)

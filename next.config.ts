@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: https://lh3.googleusercontent.com",
               "media-src 'self' blob:",
-              "connect-src 'self' https://*.supabase.co",
+              "connect-src 'self' https://*.supabase.co https://api.openai.com",
               "frame-ancestors 'none'",
             ].join('; '),
           },

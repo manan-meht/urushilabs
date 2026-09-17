@@ -3,15 +3,8 @@
  * speech synthesis (text-to-speech). Never import from client components.
  */
 
-import OpenAI from 'openai'
 import { getEnv } from '@/lib/env'
 import { prepareTtsInput } from '@/lib/voice'
-
-function getClient(): OpenAI {
-  const { OPENAI_API_KEY } = getEnv()
-  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.')
-  return new OpenAI({ apiKey: OPENAI_API_KEY })
-}
 
 /**
  * Transcribes an audio File to text. Audio is held in memory only — never
@@ -54,18 +47,46 @@ const TTS_INSTRUCTIONS =
 /**
  * Synthesises speech (MP3) from text. Truncates to the TTS input limit.
  * Returns the audio bytes.
+ *
+ * Uses fetch directly rather than the OpenAI SDK — see transcribeAudio's
+ * comment above; the SDK's Node.js HTTP internals don't reliably complete
+ * requests in the Cloudflare Workers runtime (confirmed failing here with
+ * "Connection error" when called from the meeting webhook handler).
  */
-export async function synthesizeSpeech(text: string): Promise<Buffer> {
+export interface SynthesizeSpeechOptions {
+  /** Provider voice id. Defaults to OPENAI_TTS_VOICE. */
+  voice?: string
+  /** Delivery/accent steering. Defaults to the neutral facilitator instructions. */
+  instructions?: string
+}
+
+export async function synthesizeSpeech(text: string, options: SynthesizeSpeechOptions = {}): Promise<Buffer> {
+  const { OPENAI_API_KEY } = getEnv()
+  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.')
+
   const { input } = prepareTtsInput(text)
-  const client = getClient()
-  const voice = process.env['OPENAI_TTS_VOICE'] ?? 'coral'
-  const mp3 = await client.audio.speech.create({
-    model: process.env['OPENAI_TTS_MODEL'] ?? 'gpt-4o-mini-tts',
-    voice: voice as 'coral',
-    input,
-    instructions: TTS_INSTRUCTIONS,
-    response_format: 'mp3',
+  const voice = options.voice ?? process.env['OPENAI_TTS_VOICE'] ?? 'coral'
+
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env['OPENAI_TTS_MODEL'] ?? 'gpt-4o-mini-tts',
+      voice,
+      input,
+      instructions: options.instructions ?? TTS_INSTRUCTIONS,
+      response_format: 'mp3',
+    }),
   })
-  const arrayBuffer = await mp3.arrayBuffer()
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`OpenAI speech synthesis failed (${res.status}): ${text}`)
+  }
+
+  const arrayBuffer = await res.arrayBuffer()
   return Buffer.from(arrayBuffer)
 }

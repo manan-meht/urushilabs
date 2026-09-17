@@ -1,7 +1,7 @@
 /** Database type definitions matching the Supabase schema. */
 
 // ─── Together Mode ────────────────────────────────────────────────────────────
-export type ConversationMode = 'invited' | 'together'
+export type ConversationMode = 'invited' | 'together' | 'room' | 'meeting_mediation'
 
 export type TogetherStage =
   | 'setup'
@@ -147,6 +147,290 @@ export interface DbTogetherIssueOption {
   person_a_note: string | null
   person_b_note: string | null
   created_at: string
+}
+
+// ─── Room Mode (Live Mediation) ────────────────────────────────────────────────
+export type RoomStage = 'setup' | 'consent' | 'ready' | 'live' | 'paused' | 'completed'
+
+export type RoomInterventionAction =
+  | 'LISTEN'
+  | 'CLARIFY'
+  | 'INVITE_PARTICIPANT'
+  | 'REFRAME'
+  | 'DEESCALATE'
+  | 'IDENTIFY_ISSUE'
+  | 'SUMMARIZE'
+  | 'PROPOSE_COMPROMISE'
+  | 'CONFIRM_AGREEMENT'
+  | 'MOVE_TO_NEXT_ISSUE'
+  | 'END_SESSION'
+
+export type RoomTranscriptRole = 'participant' | 'assistant'
+
+// Final report for room (Live Mediation) sessions
+export interface RoomFinalReport {
+  whatHappened: string
+  agreed: Array<{ title: string; description: string }>
+  unresolved: Array<{ title: string; description: string; suggestedNextStep: string }>
+  participantActions: Array<{ participantName: string; actions: string[] }>
+  nextSteps: string[]
+  safetyCategory: SafetyCategory
+  safetyNote?: string
+}
+
+export interface DbRoomSession {
+  id: string
+  case_id: string
+  stage: RoomStage
+  participant_count: 2 | 3
+  topic: string
+  context_summary: string | null
+  source_case_id: string | null
+  current_issue_id: string | null
+  conversation_summary: string | null
+  consent_completed_at: string | null
+  realtime_session_active: boolean
+  started_at: string | null
+  ended_at: string | null
+  paused_at: string | null
+  final_report: RoomFinalReport | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DbRoomParticipant {
+  id: string
+  session_id: string
+  case_id: string
+  participant_index: 1 | 2 | 3
+  name: string
+  pre_context: string | null
+  speaker_label: string | null
+  speaker_confidence: number | null
+  calibrated_at: string | null
+  created_at: string
+}
+
+export interface DbRoomIssue {
+  id: string
+  session_id: string
+  case_id: string
+  title: string
+  neutral_description: string
+  priority: number
+  status: IssueStatus
+  resolution: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DbRoomAgreement {
+  id: string
+  session_id: string
+  case_id: string
+  issue_id: string | null
+  description: string
+  agreed_by: string[]
+  awaiting: string[]
+  confirmed: boolean
+  confirmed_at: string | null
+  proposed_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DbRoomTranscriptSegment {
+  id: string
+  session_id: string
+  case_id: string
+  participant_id: string | null
+  diarization_speaker_label: string | null
+  speaker_confidence: number | null
+  role: RoomTranscriptRole
+  content: string
+  sequence_number: number
+  started_at: string | null
+  ended_at: string | null
+  created_at: string
+}
+
+export interface DbRoomIntervention {
+  id: string
+  session_id: string
+  case_id: string
+  action: RoomInterventionAction
+  reasoning: string | null
+  spoken_text: string | null
+  triggered_at: string
+  created_at: string
+}
+
+/** A non-browser client paired to a room session (e.g. a Raspberry Pi hardware client). */
+export interface DbRoomDevice {
+  id: string
+  session_id: string
+  case_id: string
+  device_token_hash: string
+  label: string | null
+  paired_at: string
+  last_seen_at: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
+// ─── Meeting Mediation (Google Meet / Zoom, via a meeting-bot provider) ────────
+export type MeetingPlatform = 'google_meet' | 'zoom'
+
+export type MeetingBotProviderName = 'recall'
+
+export type MeetingStatus =
+  | 'setup'
+  | 'awaiting_preparation'
+  | 'ready'
+  | 'bot_requested'
+  | 'joining'
+  | 'waiting_room'
+  | 'in_meeting'
+  | 'ended'
+  | 'generating_report'
+  | 'completed'
+  | 'failed'
+  | 'disconnected'
+  | 'cancelled'
+
+/** Same action set as Live Mediation's controller — one mediation engine, multiple transports. */
+export type MeetingInterventionAction = RoomInterventionAction
+
+export type MeetingTranscriptRole = RoomTranscriptRole
+
+// Final report for meeting mediation sessions — same shape as Live Mediation's.
+export type MeetingFinalReport = RoomFinalReport
+
+export interface DbMeetingSession {
+  id: string
+  case_id: string
+  status: MeetingStatus
+  participant_count: 2 | 3
+  topic: string
+  context_summary: string | null
+  meeting_platform: MeetingPlatform | null
+  meeting_url: string | null
+  scheduled_start_at: string | null
+  timezone: string | null
+  start_now: boolean
+  bot_provider: MeetingBotProviderName
+  provider_bot_id: string | null
+  provider_meeting_id: string | null
+  provider_metadata: Record<string, unknown> | null
+  current_issue_id: string | null
+  conversation_summary: string | null
+  consent_completed_at: string | null
+  requested_at: string | null
+  joined_at: string | null
+  ended_at: string | null
+  failure_reason: string | null
+  final_report: MeetingFinalReport | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DbMeetingParticipant {
+  id: string
+  session_id: string
+  case_id: string
+  participant_index: 1 | 2 | 3
+  name: string
+  email: string | null
+  is_initiator: boolean
+  invite_token_hash: string | null
+  invited_at: string | null
+  encrypted_context: string | null
+  context_iv: string | null
+  context_tag: string | null
+  context_submitted_at: string | null
+  consented_at: string | null
+  provider_participant_id: string | null
+  created_at: string
+}
+
+export interface DbMeetingIssue {
+  id: string
+  session_id: string
+  case_id: string
+  title: string
+  neutral_description: string
+  priority: number
+  status: IssueStatus
+  resolution: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DbMeetingAgreement {
+  id: string
+  session_id: string
+  case_id: string
+  issue_id: string | null
+  description: string
+  agreed_by: string[]
+  awaiting: string[]
+  confirmed: boolean
+  confirmed_at: string | null
+  proposed_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DbMeetingTranscriptSegment {
+  id: string
+  session_id: string
+  case_id: string
+  participant_id: string | null
+  provider_participant_id: string | null
+  speaker_name: string | null
+  role: MeetingTranscriptRole
+  content: string
+  sequence_number: number
+  confidence: number | null
+  started_at: string | null
+  ended_at: string | null
+  created_at: string
+}
+
+export interface DbMeetingIntervention {
+  id: string
+  session_id: string
+  case_id: string
+  action: MeetingInterventionAction
+  reasoning: string | null
+  spoken_text: string | null
+  triggered_at: string
+  created_at: string
+}
+
+export interface DbMeetingProviderEvent {
+  id: string
+  session_id: string | null
+  bot_provider: MeetingBotProviderName
+  provider_event_id: string
+  event_type: string
+  payload: Record<string, unknown> | null
+  processed_at: string | null
+  error_message: string | null
+  created_at: string
+}
+
+export interface DbMeetingUsage {
+  session_id: string
+  meeting_duration_seconds: number | null
+  transcript_segment_count: number
+  intervention_count: number
+  openai_input_tokens: number
+  openai_output_tokens: number
+  generated_audio_seconds: number
+  provider_cost_usd: number | null
+  estimated_total_cost_usd: number | null
+  updated_at: string
 }
 
 export type CaseStatus =
