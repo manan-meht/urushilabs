@@ -34,6 +34,17 @@ const ADDRESSED_PATTERNS: RegExp[] = [
   // Devanagari renderings vary by transcription — the sibilant lands on श/ष/स
   // and the vowel length on both syllables is inconsistent.
   /उर[ुू][शषस][िी]/,
+  // Known mis-transcription, not a spelling. In a Hindi-context sentence the
+  // transcriber resolves the unfamiliar name to the nearest real word, and
+  // पुरुषों (purushon, "men") is what it reaches for. Telling it not to — by
+  // name, in the transcription prompt — was tried and did not hold, so the
+  // corruption gets handled here instead.
+  //
+  // Safe despite पुरुषों being an ordinary word, because being named is only
+  // half the test: an utterance genuinely about men still has to contain an
+  // invitation to speak before this fires.
+  /पुरुषो[ंन]?/,
+  /पुरुष\b/,
 ]
 
 /**

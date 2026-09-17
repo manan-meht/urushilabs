@@ -79,11 +79,33 @@ class UrushiApiClient:
 
     async def _post(self, path: str, json: dict | None = None) -> dict:
         assert self._http is not None, "Use 'async with UrushiApiClient(...)' before making requests."
-        async with self._http.post(self._url(path), json=json or {}) as resp:
-            data = await resp.json()
-            if resp.status >= 400:
-                raise UrushiApiError(resp.status, data.get("error", "Unknown error"))
-            return data
+
+        # One retry, for transport failures only. A pooled keep-alive connection
+        # can be closed by the server between requests (a dev server reloading, a
+        # proxy timing out an idle socket), and aiohttp surfaces that as
+        # ServerDisconnectedError on the next use — nothing was processed, so
+        # resending is safe.
+        #
+        # Not cosmetic: this was observed dropping the one utterance that mattered
+        # most, a participant asking Urushi directly to speak. They get silence
+        # and conclude the device is broken.
+        #
+        # Deliberately NOT retried: UrushiApiError. A 4xx/5xx means the request
+        # was received and rejected, and replaying it could double-record an
+        # utterance.
+        for attempt in (1, 2):
+            try:
+                async with self._http.post(self._url(path), json=json or {}) as resp:
+                    data = await resp.json()
+                    if resp.status >= 400:
+                        raise UrushiApiError(resp.status, data.get("error", "Unknown error"))
+                    return data
+            except (aiohttp.ServerDisconnectedError, aiohttp.ClientConnectionError):
+                if attempt == 2:
+                    raise
+                logger.warning("Connection to the backend dropped on %s — retrying once.", path)
+
+        raise AssertionError("unreachable")
 
     async def _get(self, path: str) -> dict:
         assert self._http is not None, "Use 'async with UrushiApiClient(...)' before making requests."

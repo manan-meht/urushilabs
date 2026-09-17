@@ -96,6 +96,27 @@ describe('detectDirectAddress', () => {
       }
     })
 
+    it('recognises the name through its known mis-transcription', () => {
+      // Observed live: "Urushi क्या बोल रहा है?" came back as "पुरुषों क्या बोल
+      // रहा है?". Instructing the transcriber not to do this, by name, did not
+      // hold — so the corruption is accepted as an address form here instead.
+      expect(detectDirectAddress('पुरुषों, आप क्या कहते हैं?')).toBe(true)
+      expect(detectDirectAddress('पुरुषों, कुछ बोलिए')).toBe(true)
+    })
+
+    it('still ignores genuine sentences about men', () => {
+      // पुरुषों is an ordinary Hindi word. Requiring an invitation is what keeps
+      // accepting it as an alias from turning every mention of men into a
+      // summons.
+      for (const text of [
+        'पुरुषों ने नहीं.',
+        'दोनों पुरुष यहाँ थे।',
+        'पुरुषों की बात अलग है।',
+      ]) {
+        expect(detectDirectAddress(text), text).toBe(false)
+      }
+    })
+
     it('ignores Hindi questions asked of each other', () => {
       for (const text of [
         'आप क्या कहते हैं?',

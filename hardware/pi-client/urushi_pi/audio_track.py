@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import fractions
 import logging
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 SAMPLE_RATE = 48000  # WebRTC's standard audio sample rate
 CHANNELS = 1
 FRAME_MS = 20  # standard WebRTC frame size
+#: Peak int16 amplitude below which a frame counts as silence. Comfort noise
+#: and room tone sit far below this; speech sits far above it.
+SILENCE_THRESHOLD = 500
 
 
 class MicrophoneStreamTrack(MediaStreamTrack):
@@ -105,6 +109,10 @@ class SpeakerPlayback:
         self._resampler = AudioResampler(format="s16", layout="mono", rate=sample_rate)
         self._stream = sd.OutputStream(device=device, channels=CHANNELS, samplerate=sample_rate, dtype="int16")
         self._stream.start()
+        #: Monotonic time we last wrote audio that was actually audible, or None
+        #: if nothing has ever played. Used by drain() to tell "Urushi is still
+        #: talking" from "the track is idling".
+        self._last_audible_write: float | None = None
 
     async def run(self, track: MediaStreamTrack) -> None:
         try:
@@ -117,6 +125,8 @@ class SpeakerPlayback:
                 for f in frames:
                     pcm = f.to_ndarray().reshape(-1).astype(np.int16)
                     self._stream.write(pcm)
+                    if pcm.size and int(np.abs(pcm.astype(np.int32)).max()) > SILENCE_THRESHOLD:
+                        self._last_audible_write = time.monotonic()
         except asyncio.CancelledError:
             pass
         except MediaStreamError:
@@ -126,6 +136,51 @@ class SpeakerPlayback:
             # every clean shutdown.
             logger.debug("Remote audio track ended.")
 
+    async def drain(
+        self,
+        *,
+        expect_audio: bool = False,
+        idle_seconds: float = 0.6,
+        start_timeout: float = 5.0,
+        timeout: float = 20.0,
+    ) -> None:
+        """Wait until Urushi has actually finished talking, up to `timeout`.
+
+        Tearing down the moment a response ends truncates mid-sentence, because
+        the Realtime API's data-channel events run well AHEAD of the audio. RTP
+        arrives paced in real time, so `response.done` can fire before the first
+        word is even audible — measured: at teardown, nothing had played at all.
+        In a live session that means Urushi gets cut off part-way through an
+        intervention, with no clue why.
+
+        Two phases, because neither alone is sufficient:
+
+        1. Wait for audio to BEGIN (`expect_audio`), since at close time it
+           frequently has not. Skipped otherwise, so an ordinary reconnect with
+           nobody speaking costs nothing.
+        2. Wait for it to go quiet. Frame arrival is useless as a signal here — a
+           WebRTC track streams continuously, pushing comfort noise between
+           utterances, so waiting for frames to stop waits forever (measured: the
+           full timeout). Audible frames are the signal.
+        """
+        deadline = time.monotonic() + timeout
+
+        if expect_audio and self._last_audible_write is None:
+            start_deadline = min(time.monotonic() + start_timeout, deadline)
+            while self._last_audible_write is None and time.monotonic() < start_deadline:
+                await asyncio.sleep(0.1)
+
+        if self._last_audible_write is None:
+            return  # nothing played, and nothing is going to
+
+        while time.monotonic() < deadline:
+            if time.monotonic() - self._last_audible_write >= idle_seconds:
+                return
+            await asyncio.sleep(0.1)
+
+        logger.warning("Playback did not go idle within %.0fs — closing anyway.", timeout)
+
     def close(self) -> None:
+        # stop() (unlike abort()) waits for buffers already handed to PortAudio.
         self._stream.stop()
         self._stream.close()

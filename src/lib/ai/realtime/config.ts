@@ -60,7 +60,12 @@ export function buildTranscriptionPrompt(languageCodes: string[]): string {
     // entirely. Direct address (src/lib/ai/room/directAddress.ts) requires the
     // name to survive transcription, so the whole feature depends on this line.
     'The AI mediator in the room is named Urushi, and participants sometimes address it by name; ' +
-    'always spell that name "Urushi", whatever language the surrounding sentence is in.'
+    'always spell that name "Urushi", whatever language the surrounding sentence is in. ' +
+    // Naming the confusion, not just the name. In a Hindi-context sentence the
+    // transcriber resolves the unfamiliar name into the nearest real Hindi word
+    // — observed live as पुरुषों (purushon, "men"), which silently destroys the
+    // direct-address signal. Listing the near-misses is what moves it.
+    'Do not transcribe it as पुरुषों, पुरुष, उरुशी or "you" — it is always the name "Urushi".'
 
   if (languageCodes.length === 0) return base
 

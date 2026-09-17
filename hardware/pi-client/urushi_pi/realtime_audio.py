@@ -68,6 +68,11 @@ class RealtimeAudioSession:
         self._data_channel = None
         self._playback_task: asyncio.Task | None = None
         self._assistant_speaking = False
+        #: True once Urushi has begun any response on this connection. Tells
+        #: close() whether it is worth waiting for playback to start — the audio
+        #: lags the data-channel events, so "no audio yet" does not mean "none
+        #: coming". False keeps an ordinary silent reconnect instant.
+        self._audio_expected = False
         self._connected = asyncio.Event()
 
     async def connect(self) -> None:
@@ -152,6 +157,7 @@ class RealtimeAudioSession:
                 asyncio.ensure_future(self._on_transcript(event.content, event.diarization_speaker_label))
         elif isinstance(event, ResponseStarted):
             self._assistant_speaking = True
+            self._audio_expected = True
             if self._on_assistant_speaking_change:
                 asyncio.ensure_future(self._on_assistant_speaking_change(True))
         elif isinstance(event, ResponseEnded):
@@ -162,6 +168,15 @@ class RealtimeAudioSession:
             logger.error("Realtime API error: %s", event.message)
 
     async def close(self) -> None:
+        # Let Urushi finish the sentence before tearing anything down. Cancelling
+        # the playback task first truncates mid-word: frames still in flight from
+        # the remote track never reach the output stream, so the stream's own
+        # drain has nothing left to flush.
+        #
+        # Costs nothing when nobody is speaking — drain() returns immediately if
+        # no audio has played, and within ~0.4s once playback has caught up.
+        await self._speaker.drain(expect_audio=self._audio_expected)
+
         if self._playback_task:
             self._playback_task.cancel()
         self._mic.stop()
