@@ -114,8 +114,6 @@ class RoomSession:
 
         async def on_assistant_speaking_change(speaking: bool) -> None:
             logger.debug("Assistant speaking: %s", speaking)
-            if speaking:
-                await self._note_assistant_audio_started()
 
         async def on_closed(reason: str) -> None:
             self._close_reason = reason
@@ -161,25 +159,42 @@ class RoomSession:
             self._opening_text = text
 
         logger.info("Opening: %s", self._opening_text)
-        if self._audio.trigger_assistant_response(self._opening_text):
-            self._opening_awaiting_audio = True
-        else:
+
+        # Taken BEFORE triggering: anything audible at or before this instant
+        # belongs to an earlier response, not to the opening.
+        baseline = self._audio.last_audible_write
+
+        if not self._audio.trigger_assistant_response(self._opening_text):
             logger.warning("Opening could not be sent — retrying on the next connection.")
-
-    async def _note_assistant_audio_started(self) -> None:
-        """Urushi's voice is coming out of the speaker right now.
-
-        That is the only evidence good enough to claim the opening. Confirming on
-        a successful response.create instead would re-introduce the bug this
-        exists to prevent: a connection can die between the send and any sound,
-        leaving the backend convinced the room was greeted when it heard nothing.
-        """
-        if not self._opening_awaiting_audio:
             return
+
+        self._opening_awaiting_audio = True
+        asyncio.ensure_future(self._confirm_opening_once_heard(baseline))
+
+    async def _confirm_opening_once_heard(self, baseline: float | None) -> None:
+        """Mark the opening delivered, but only after the room has actually heard it.
+
+        The obvious signal — response.started on the data channel — is wrong, and
+        was wrong in production: it fires before the RTP audio arrives, so the
+        backend recorded an introduction that nobody heard and then refused to
+        offer another one. `baseline` is the last-audible timestamp taken before
+        triggering, so audio from an earlier response cannot be mistaken for this
+        one.
+        """
+        heard = await self._audio.wait_until_audible(after=baseline) if self._audio else False
+
+        if not heard:
+            # The connection likely died mid-introduction. Leave the opening
+            # unclaimed so the next connection says it again.
+            logger.warning("Opening never became audible — will retry on the next connection.")
+            self._opening_awaiting_audio = False
+            return
+
         self._opening_awaiting_audio = False
         self._opening_delivered = True
         if self._opening_text:
             await self._api.confirm_opening(self._opening_text)
+            logger.info("Opening delivered and confirmed.")
 
     async def wait_until_closed(self) -> str:
         """Blocks until the current connection ends, then returns the reason."""

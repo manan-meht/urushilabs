@@ -3,6 +3,8 @@ import { getServiceClient } from '@/lib/db/client'
 import { getEnv } from '@/lib/env'
 import { requireRoomSessionAccess, isAccessError } from '@/lib/room/getSession'
 import { buildRoomSystemInstructions } from '@/lib/ai/room/roomPrompt'
+import { buildOpeningInstruction, buildFallbackOpening } from '@/lib/ai/room/openingPrompt'
+import { getRealtimeConfig } from '@/lib/ai/realtime/config'
 import type { DbRoomParticipant } from '@/lib/db/types'
 
 /**
@@ -57,10 +59,17 @@ export async function POST(
 
   const participantNames = ((participants ?? []) as DbRoomParticipant[]).map((p) => p.name)
 
+  // The room's transcription languages decide what Urushi opens in — a room
+  // transcribed for Hindi is a room where people speak Hindi.
+  const { transcribeLanguages } = getRealtimeConfig()
+
   if (DEMO_MODE || !OPENAI_API_KEY) {
-    const names = participantNames.join(' and ')
     return NextResponse.json({
-      spokenText: `Hello ${names}. I'm Urushi. We're here to talk about ${access.session.topic}. Who'd like to start?`,
+      spokenText: buildFallbackOpening({
+        participantNames,
+        topic: access.session.topic,
+        languageCodes: transcribeLanguages,
+      }),
       alreadyOpened: false,
     })
   }
@@ -78,14 +87,7 @@ export async function POST(
       model: OPENAI_MODEL,
       messages: [
         { role: 'system', content: system },
-        {
-          role: 'user',
-          content:
-            'The session has just started and nobody has spoken yet. Say your opening line out loud: ' +
-            'greet them by name, say briefly who you are and that you will mostly listen and step in ' +
-            'when useful, name the topic, and invite one of them to start by describing how they see it. ' +
-            'Two or three sentences, warm and natural. Reply with ONLY the words you will say out loud.',
-        },
+        { role: 'user', content: buildOpeningInstruction(transcribeLanguages) },
       ],
       max_tokens: 160,
       temperature: 0.6,

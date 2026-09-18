@@ -136,6 +136,33 @@ class SpeakerPlayback:
             # every clean shutdown.
             logger.debug("Remote audio track ended.")
 
+    @property
+    def last_audible_write(self) -> float | None:
+        """Monotonic time audible audio was last written, or None if none ever
+        has. Callers wanting "did the room actually hear this?" must compare
+        against a baseline taken before triggering — see wait_until_audible."""
+        return self._last_audible_write
+
+    async def wait_until_audible(self, *, after: float | None = None, timeout: float = 15.0) -> bool:
+        """Block until audible audio is written, returning whether it was.
+
+        `after` is a baseline from last_audible_write taken BEFORE the thing you
+        are waiting on; anything at or before it is somebody else's audio and
+        does not count.
+
+        This is the only honest answer to "has the room heard it?". The Realtime
+        API's response.started arrives over the data channel well before the RTP
+        audio does, so treating that event as delivery records speech that nobody
+        heard — which is exactly what happened to the session opening.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            latest = self._last_audible_write
+            if latest is not None and (after is None or latest > after):
+                return True
+            await asyncio.sleep(0.05)
+        return False
+
     async def drain(
         self,
         *,

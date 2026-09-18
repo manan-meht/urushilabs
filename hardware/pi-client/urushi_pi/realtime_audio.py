@@ -140,6 +140,20 @@ class RealtimeAudioSession:
         }))
         return True
 
+    @property
+    def last_audible_write(self) -> float | None:
+        """Baseline for wait_until_audible — take this BEFORE triggering."""
+        return self._speaker.last_audible_write
+
+    async def wait_until_audible(self, *, after: float | None = None, timeout: float = 15.0) -> bool:
+        """Whether audio actually reached the speaker after `after`.
+
+        Callers that must know the room HEARD something (rather than that the
+        model began generating) have to await this. response.started fires on the
+        data channel ahead of the RTP stream, so it cannot answer the question.
+        """
+        return await self._speaker.wait_until_audible(after=after, timeout=timeout)
+
     def _cancel_assistant_response(self) -> None:
         if not self._assistant_speaking:
             return
