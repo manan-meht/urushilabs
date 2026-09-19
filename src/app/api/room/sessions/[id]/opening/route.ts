@@ -4,7 +4,8 @@ import { getEnv } from '@/lib/env'
 import { requireRoomSessionAccess, isAccessError } from '@/lib/room/getSession'
 import { buildRoomSystemInstructions } from '@/lib/ai/room/roomPrompt'
 import { buildOpeningInstruction, buildFallbackOpening } from '@/lib/ai/room/openingPrompt'
-import { getRealtimeConfig } from '@/lib/ai/realtime/config'
+import { getConversationSettings } from '@/lib/conversation/getSettings'
+import { SHARED_DEVICE_REF } from '@/lib/conversation/acceptance'
 import type { DbRoomParticipant } from '@/lib/db/types'
 
 /**
@@ -59,16 +60,27 @@ export async function POST(
 
   const participantNames = ((participants ?? []) as DbRoomParticipant[]).map((p) => p.name)
 
-  // The room's transcription languages decide what Urushi opens in — a room
-  // transcribed for Hindi is a room where people speak Hindi.
-  const { transcribeLanguages } = getRealtimeConfig()
+  // The AGREED conversation settings, not the env transcription languages. The
+  // opening used to key off the latter, so it ignored the language and
+  // personality the participants actually chose at setup.
+  const { effective: settings, acceptance } = await getConversationSettings(access.caseId, [SHARED_DEVICE_REF])
+
+  const openingContext = {
+    settings,
+    // Consent, not configuration: the strong opening is the very first thing
+    // anyone hears, so it waits for actual acceptance rather than a proposal.
+    profanityAccepted: acceptance.profanityPermitted,
+    // Anything already known about the dispute means asking them to start from
+    // scratch would waste the first minute of the session.
+    hasContext: Boolean(access.session.context_summary?.trim()),
+  }
 
   if (DEMO_MODE || !OPENAI_API_KEY) {
     return NextResponse.json({
       spokenText: buildFallbackOpening({
+        ...openingContext,
         participantNames,
         topic: access.session.topic,
-        languageCodes: transcribeLanguages,
       }),
       alreadyOpened: false,
     })
@@ -78,6 +90,7 @@ export async function POST(
     topic: access.session.topic,
     contextSummary: access.session.context_summary ?? undefined,
     participantNames,
+    settings,
   })
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -87,7 +100,7 @@ export async function POST(
       model: OPENAI_MODEL,
       messages: [
         { role: 'system', content: system },
-        { role: 'user', content: buildOpeningInstruction(transcribeLanguages) },
+        { role: 'user', content: buildOpeningInstruction(openingContext) },
       ],
       max_tokens: 160,
       temperature: 0.6,
