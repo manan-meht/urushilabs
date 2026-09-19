@@ -114,18 +114,27 @@ export function buildRealtimeSessionConfig(opts: { instructions: string }) {
           noise_reduction: { type: 'far_field' },
           turn_detection: {
             type: 'semantic_vad',
-            // Wait longer before closing a turn. At the default (auto ≈ medium),
-            // real room audio came back shredded into fragments — "You know,",
-            // "This need to be.", "मुझे लगता है कि" — each sent to the
-            // intervention controller as a separate utterance. The controller
-            // then judges sentence fragments instead of complete thoughts, which
-            // biases it toward LISTEN and costs an API round trip per fragment.
+            // Turn-closing cadence, and a genuine trade-off.
             //
-            // People in a room mid-disagreement pause to think, and pausing is
-            // not finishing. 'low' is the right trade here: the cost is a little
-            // more latency before Urushi may speak, which listen-by-default
-            // makes nearly free.
-            eagerness: 'low',
+            // At the default this shredded room audio into fragments — "You
+            // know,", "This need to be." — each sent to the controller as its
+            // own utterance. 'low' fixed that and was declared a success on the
+            // strength of one short test sentence.
+            //
+            // In a real session it caused something far worse. Transcripts are
+            // only emitted when a turn CLOSES, and the WebRTC connection drops
+            // every minute or two; a drop destroys whatever turn is open. So
+            // 'low' held long speech in one never-ending turn until a drop threw
+            // it away, and a participant's entire account — two paragraphs of
+            // it — reached the mediator as nothing at all. Short utterances
+            // survived, which is what made it look like patchy transcription
+            // rather than total loss.
+            //
+            // 'medium' closes turns at roughly sentence level. That brings some
+            // fragmentation back, and that is the right way round: a fragment is
+            // an annoyance the controller can still reason about, whereas losing
+            // what someone just said is unrecoverable and invisible to them.
+            eagerness: 'medium',
             // The mediation controller decides when Urushi speaks — never auto-reply.
             create_response: false,
             // Still let a participant's speech interrupt/cancel Urushi mid-response.

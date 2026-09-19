@@ -77,7 +77,7 @@ const INVITATION_PATTERNS: RegExp[] = [
   /कुछ\s*(बोलिए|बोलिये|बोलो|कहिए|कहिये|कहो)/,
   /मदद\s*(कीजिए|कीजिये|करिए|करिये|करो)/,
   /बता(इए|इये|ओ|एं|ाइए)/,
-  /क्या\s*करना\s*चाहिए/,
+  /क्या\s*कर(ना\s*चाहिए|ें|ूं|ूँ)/,
   /सुन\s*रह[ेी]\s*(हैं|है|हो)/,
   /बीच\s*में\s*(आइए|आइये|आओ|बोलिए)/,
   /(सुलझा|हल\s*कर)(इए|इये|ओ|ना|ें)/,
@@ -87,6 +87,7 @@ const INVITATION_PATTERNS: RegExp[] = [
   /\baap\s*kya\s*(kehte|kehti|sochte|sochti|bolte|bolti)\b/i,
   /\baapko\s*kya\s*lag(ta|ti|a)\b/i,
   /\bkya\s*kehna\s*hai\b/i,
+  /\b(ab\s*)?kya\s*kare[ln]?\b/i,
   /\baapk[ia]\s*kya\s*(raay|ray|khayal|vichar)\b/i,
   /\bkuch\s*(bolo|boliye|kaho|kahiye)\b/i,
   /\bmadad\s*(karo|kijiye|kijie|kariye)\b/i,
@@ -107,5 +108,20 @@ const INVITATION_PATTERNS: RegExp[] = [
 export function detectDirectAddress(text: string): boolean {
   if (!text) return false
   if (!ADDRESSED_PATTERNS.some((pattern) => pattern.test(text))) return false
+
+  // Named AND asking something. This carries most of the weight now, because
+  // enumerating invitation phrasings kept losing: three natural ways of asking
+  // — "आपको क्या लगता है", "आप कुछ बोलिए", "अब क्या करें" — each got silence in
+  // live sessions until someone noticed and added a pattern for it. Guessing at
+  // phrasings from outside the language does not converge.
+  //
+  // Talking ABOUT Urushi is almost always a statement ("Urushi has been quiet"),
+  // so requiring a question mark keeps those out while catching anything
+  // actually directed at it. The costs are lopsided too: a false positive is one
+  // unnecessary sentence, rate-limited by the cooldown, while a false negative
+  // reads as a broken device.
+  if (/[?？]\s*$/.test(text.trim())) return true
+
+  // Non-question invitations still need an explicit phrasing: "Urushi, step in."
   return INVITATION_PATTERNS.some((pattern) => pattern.test(text))
 }

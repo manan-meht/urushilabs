@@ -154,3 +154,40 @@ describe('detectDirectAddress', () => {
     })
   })
 })
+
+describe('named plus a question', () => {
+  it('fires on any question addressed to Urushi, whatever the phrasing', () => {
+    // Each of these failed in a live session before this rule existed, because
+    // the invitation list did not happen to contain that particular wording.
+    for (const text of [
+      'Urushi अब क्या करें?',
+      'उरुशी, आपको क्या लगता है?',
+      'Urushi, ab hum kya karein?',
+      'Urushi, is this going anywhere?',
+      'So Urushi, where does that leave us?',
+    ]) {
+      expect(detectDirectAddress(text), text).toBe(true)
+    }
+  })
+
+  it('still ignores statements about Urushi', () => {
+    // Talking about the mediator is almost always a statement, which is what
+    // makes the question mark a usable signal.
+    for (const text of [
+      'Urushi has been very quiet.',
+      'I think Urushi is recording this.',
+      'उरुशी चुप है।',
+      'पुरुषों ने नहीं.',
+    ]) {
+      expect(detectDirectAddress(text), text).toBe(false)
+    }
+  })
+
+  it('still requires the name — a bare question is not for Urushi', () => {
+    // Participants ask each other questions constantly; pulling the mediator in
+    // for those is the over-intervention the whole design prevents.
+    for (const text of ['What do we do now?', 'अब क्या करें?', 'Is that fair?']) {
+      expect(detectDirectAddress(text), text).toBe(false)
+    }
+  })
+})

@@ -67,10 +67,14 @@ describe('buildRealtimeSessionConfig', () => {
     expect(turn_detection.interrupt_response).toBe(true)
   })
 
-  it('waits for speakers to finish rather than cutting on a pause', () => {
+  it('closes turns often enough that a dropped connection cannot swallow a whole account', () => {
+    // Not 'low'. Transcripts emit only when a turn closes, and a WebRTC drop
+    // destroys an open turn — so the longer a turn stays open, the more speech a
+    // drop can erase. Observed live: two paragraphs reached the mediator as
+    // nothing at all.
     const { turn_detection } = buildRealtimeSessionConfig({ instructions: '' }).session.audio.input
     expect(turn_detection.type).toBe('semantic_vad')
-    expect(turn_detection.eagerness).toBe('low')
+    expect(turn_detection.eagerness).not.toBe('low')
   })
 
   it('steers transcription language via prompt, never a languages field', () => {
