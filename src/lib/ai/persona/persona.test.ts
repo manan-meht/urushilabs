@@ -94,33 +94,104 @@ describe('buildMediatorPersona — language', () => {
   })
 })
 
-describe('buildMediatorPersona — profanity', () => {
+describe('buildMediatorPersona — strong language', () => {
+  const shooter = { personality: 'straight_shooter', allowProfanity: true } as const
+
   it('is off by default and forbids mirroring the room', () => {
     const prompt = buildMediatorPersona(settings())
-    expect(prompt).toContain('Profanity: Off')
+    expect(prompt).toContain('Strong language: Off')
     expect(prompt).toContain('do NOT mirror them')
   })
 
-  it('requires the word when it is on and the moment calls for it', () => {
-    // A gentler phrasing measurably failed: told profanity was merely
-    // "available", the model reached for a polite synonym in exactly the moment
-    // the setting exists for.
-    const prompt = buildMediatorPersona(settings({ personality: 'straight_shooter', allowProfanity: true }))
-    expect(prompt).toContain('Profanity: On')
-    expect(prompt).toContain('say the word')
-    expect(prompt).toContain("NEVER at a person's worth")
+  it('does not require any particular word to appear', () => {
+    // The previous version made a specific word MANDATORY whenever Urushi called
+    // something out, which produced a mediator that swore on cue rather than
+    // when it meant it.
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).not.toContain('REQUIREMENT, not a suggestion')
+    expect(prompt).not.toMatch(/MUST contain/i)
+    expect(prompt).toContain('not a quota to fill')
+  })
+
+  it('treats the example words as register, not as a vocabulary', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('illustrate the register')
+    expect(prompt).toContain('not a required vocabulary')
+  })
+
+  it('draws the line at the target, not the word', () => {
+    // The whole distinction: frustration with a situation is fine, the same word
+    // aimed at a person is not.
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('frustration with a SITUATION')
+    expect(prompt).toContain('never become a personal attack')
+    // Position is not a defence — a swear at the front of a sentence does not
+    // make the rest of it safe.
+    expect(prompt).toContain('Position is not a defence')
+  })
+
+  it('shows both a permitted and a forbidden use of the same register', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    // Untargeted interjection — allowed.
+    expect(prompt).toContain('phir wahi gol-gol baat')
+    // Same register, aimed at a person — forbidden.
+    expect(prompt).toContain('Tu chutiya hai')
+    expect(prompt).toContain('Tum dono chutiye ho')
+  })
+
+  it('forbids harassment, threats and slurs explicitly', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    for (const rule of ['sexual harassment', 'a threat', 'discriminatory slur', 'humiliate']) {
+      expect(prompt, rule).toContain(rule)
+    }
+  })
+
+  it('makes escalation earned rather than automatic', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('Escalation is earned')
+    // Disagreement, needing time, or struggling to express yourself are never
+    // reasons to swear at someone.
+    expect(prompt).toContain('merely disagrees')
+    expect(prompt).toContain('struggling to express themselves')
+    expect(prompt).toContain('distress, fear, coercion or abuse')
+  })
+
+  it('does not import Delhi expressions into an English conversation', () => {
+    expect(buildMediatorPersona(settings(shooter))).toContain('Do not import Delhi expressions')
   })
 
   it('cannot be enabled for a personality that does not offer it', () => {
-    // normalizeConversationSettings forces it off, so the prompt never sees it
-    // even if a request asked for it.
     const prompt = buildMediatorPersona(settings({ personality: 'diplomat', allowProfanity: true }))
-    expect(prompt).toContain('Profanity: Off')
+    expect(prompt).toContain('Strong language: Off')
   })
 
-  it('stays equally direct with profanity off', () => {
+  it('stays equally direct with strong language off', () => {
     const prompt = buildMediatorPersona(settings({ personality: 'straight_shooter' }))
-    expect(prompt).toContain('exactly as blunt as you would be with it')
+    expect(prompt).toContain('exactly as direct as you would be with it')
+  })
+})
+
+describe('records never carry strong language', () => {
+  const shooter = { personality: 'straight_shooter', allowProfanity: true } as const
+
+  it('forces clean language for reports and summaries even when agreed', () => {
+    // A record is re-read later, often alone and sometimes alongside a third
+    // party, without the context that made a word land as camaraderie.
+    const record = buildMediatorPersona(settings(shooter), { written: true, record: true })
+    expect(record).toContain('Strong language: Off for this output')
+    expect(record).not.toContain('bhenchod')
+  })
+
+  it('still allows it in a conversational turn', () => {
+    const live = buildMediatorPersona(settings(shooter), { written: false })
+    expect(live).toContain('Strong language: On')
+  })
+
+  it('keeps records clean whatever the setting', () => {
+    for (const allowProfanity of [false, true]) {
+      const record = buildMediatorPersona(settings({ ...shooter, allowProfanity }), { record: true })
+      expect(record, String(allowProfanity)).toContain('Off for this output')
+    }
   })
 })
 

@@ -103,7 +103,7 @@ export async function generateFinalReport(ctx: FinalReportContext): Promise<Fina
     `Issue: ${i.title}\nStatus: ${i.status}${i.resolution ? `\nResolution: ${i.resolution}` : ''}${i.personAPosition ? `\n${ctx.personAName}'s position: ${i.personAPosition}` : ''}${i.personBPosition ? `\n${ctx.personBName}'s position: ${i.personBPosition}` : ''}`
   ).join('\n\n')
 
-  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true, record: true })}\n\n` : ''
   // Only works in final position, which is why it is appended rather than folded
   // into the persona block above.
   const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''

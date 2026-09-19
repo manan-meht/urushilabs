@@ -174,7 +174,7 @@ export interface MediationContext {
 export function buildMediationSystemPrompt(settings?: ConversationSettings): string {
   // Optional: a caller without a case to read settings from keeps the original
   // prompt byte for byte.
-  const persona = settings ? `${buildMediatorPersona(settings, { written: true })}\n\n` : ''
+  const persona = settings ? `${buildMediatorPersona(settings, { written: true, record: true })}\n\n` : ''
   // Only works in final position, which is why it is appended rather than folded
   // into the persona block above.
   const languageReminder = settings ? buildPersonaLanguageReminder(settings) : ''

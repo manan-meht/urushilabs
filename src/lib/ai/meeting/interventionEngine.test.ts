@@ -635,8 +635,7 @@ describe('Persona prompt composition', () => {
       settings: settings({ personality: 'diplomat' }),
       meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
     })
-    expect(prompt).not.toContain('Profanity filter: On (strong)')
-    expect(prompt).not.toContain('Profanity filter: On (mild)')
+    expect(prompt).not.toContain('Strong language: On')
   })
 
   it('includes profanity limits for Straight Shooter + unfiltered', () => {
@@ -644,9 +643,18 @@ describe('Persona prompt composition', () => {
       settings: settings({ personality: 'straight_shooter', languageStyle: 'unfiltered' }),
       meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
     })
-    expect(prompt).toContain('Profanity filter: On (strong)')
-    expect(prompt).toContain('NEVER at a person')
-    expect(prompt).toMatch(/explicitly turned strong profanity on/i)
+    expect(prompt).toContain('Strong language: On')
+    // No enumerated vocabulary and no mandatory word — judgement by target
+    // and context is the rule now.
+    expect(prompt).not.toMatch(/MUST contain/i)
+    expect(prompt).toContain('never become a personal attack')
+    // The guardrail moved from a phrase about a person's worth to an explicit
+    // list of what strong language may never become.
+    expect(prompt).toContain('sexual harassment')
+    expect(prompt).toContain('discriminatory slur')
+    // The shared module no longer describes tiers ('mild'/'strong') — the
+    // permission is one setting, and the judgement is contextual.
+    expect(prompt).toMatch(/explicitly agreed you may swear/i)
   })
 
   it('tells Urushi never to swear, even if the room does, when the profanity filter is off', () => {
@@ -654,7 +662,7 @@ describe('Persona prompt composition', () => {
       settings: settings({ personality: 'straight_shooter', languageStyle: 'clean' }),
       meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
     })
-    expect(prompt).toContain('Profanity filter: Off')
+    expect(prompt).toContain('Strong language: Off')
     expect(prompt).toMatch(/do not mirror/i)
   })
 
@@ -680,7 +688,7 @@ describe('Persona prompt composition', () => {
     // Plus the live-call framing the shared foundation does not cover.
     expect(prompt).toContain('You are NOT an AI assistant observing this meeting')
     // No profanity section at all, even though a style was supplied.
-    expect(prompt).not.toContain('Profanity filter')
+    expect(prompt).not.toContain('Strong language:')
   })
 
   it('adds entry-style guidance only when generating speech', () => {

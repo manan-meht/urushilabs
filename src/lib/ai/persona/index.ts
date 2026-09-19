@@ -32,6 +32,17 @@ export interface PersonaOptions {
    * script to choose.
    */
   written?: boolean
+  /**
+   * Whether this output is a durable RECORD — a report, a summary, structured
+   * action items — rather than a turn in the conversation.
+   *
+   * Forces clean language even where swearing was agreed. A record is re-read
+   * later, often alone and sometimes alongside a third party, without the
+   * conversational context that made a word land as camaraderie rather than
+   * aggression. Separate from `written` on purpose: a text mediation turn is
+   * written but is not a record.
+   */
+  record?: boolean
 }
 
 /**
@@ -53,7 +64,7 @@ export function buildMediatorPersona(
       script: settings.textScript,
       includeScript: opts.written === true,
     }),
-    buildProfanityDirection(settings.allowProfanity),
+    buildProfanityDirection(settings.allowProfanity, { record: opts.record === true }),
   ].join('\n\n')
 }
 

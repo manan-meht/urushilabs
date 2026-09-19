@@ -41,7 +41,10 @@ export async function reviewMessage(opts: {
 
   // A reframe is text the speaker will send as their own, so it has to come out
   // in the same language and register as the rest of the conversation.
-  const persona = opts.settings ? `${buildMediatorPersona(opts.settings, { written: true })}\n\n` : ''
+  // record: this rewrites a PARTICIPANT's own message for the other person to
+  // read. Urushi putting swearing into someone else's words is not what anyone
+  // agreed to, however the mediator is allowed to talk in its own voice.
+  const persona = opts.settings ? `${buildMediatorPersona(opts.settings, { written: true, record: true })}\n\n` : ''
   // Only works in final position, which is why it is appended rather than folded
   // into the persona block above.
   const languageReminder = opts.settings ? buildPersonaLanguageReminder(opts.settings) : ''

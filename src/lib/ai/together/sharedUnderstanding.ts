@@ -90,7 +90,7 @@ export async function generateSharedUnderstanding(
   const formatSummaries = (name: string, summaries: Array<{ round: number; summary: string }>) =>
     summaries.map(s => `Round ${s.round}:\n${s.summary}`).join('\n\n')
 
-  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true, record: true })}\n\n` : ''
   // Only works in final position, which is why it is appended rather than folded
   // into the persona block above.
   const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''

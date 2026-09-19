@@ -32,6 +32,8 @@ import {
   type TextScript,
 } from '@/lib/conversation/settings'
 import { getPreviewScenario, getStylePreview } from '@/lib/conversation/previews'
+import { PROFANITY_HELPER_TEXT, PROFANITY_TOGGLE_LABEL } from '@/lib/conversation/profanityExamples'
+import { ProfanityDisclosure } from '@/components/ProfanityDisclosure'
 
 export interface ConversationStyleValue {
   language: ConversationLanguage
@@ -244,13 +246,15 @@ export function ConversationStyleFields({ value, onChange, showScript = false, d
             className="mt-0.5 w-5 h-5 rounded accent-[#4a654e] shrink-0"
           />
           <span>
-            <span className="font-body-md text-on-surface block">Allow occasional swearing</span>
+            <span className="font-body-md text-on-surface block">{PROFANITY_TOGGLE_LABEL}</span>
             <span className="font-label-sm text-on-surface-variant text-[12px] leading-snug">
-              Urushi may use strong language for emphasis. No personal abuse.
+              {PROFANITY_HELPER_TEXT}
             </span>
           </span>
         </label>
       )}
+
+      {value.personality === 'straight_shooter' && <ProfanityDisclosure />}
 
       <button
         type="button"

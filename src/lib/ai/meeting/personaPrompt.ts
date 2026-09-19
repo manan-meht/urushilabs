@@ -20,6 +20,7 @@ import type {
 } from '@/lib/meeting/agentSettings'
 import { effectiveLanguage } from '@/lib/meeting/agentSettings'
 import { PERSONALITY_MODULES } from '@/lib/ai/persona/personalities'
+import { buildProfanityDirection } from '@/lib/ai/persona/profanity'
 import type { DetectedLanguage } from './languageDetection'
 
 export const MEETING_PERSONA_PROMPT_VERSION = '3.0'
@@ -147,35 +148,9 @@ const INTERVENTION_MODULES: Record<InterventionLevel, string> = {
 // explicit choice about profanity, and that choice must hold regardless of how
 // the room itself talks — including when participants are the ones swearing.
 
-export const LANGUAGE_STYLE_CLEAN = `# Profanity filter: Off
-Never use profanity — not even mild words like "bullshit", "BS" or "crap". No exceptions.
-This holds regardless of the room's tone. If participants swear or use crude language, do NOT mirror them, do NOT adopt their words, and do NOT let their language creep into yours — you stay completely clean no matter how heated or profane the conversation around you gets. Be extremely direct instead: sharp, plain language does the same job without a single swear word.`
 
-export const LANGUAGE_STYLE_DIRECT = `# Profanity filter: On (mild)
-The person configuring you explicitly turned mild profanity on — use it, don't just keep it in reserve. "Bullshit", "BS" and "crap" are all available to you. Stronger profanity is still off the table.
-The single most reliable moment to use it: whenever you are calling out bullshit, an excuse, or a dodge (see UNSUPPORTED_CLAIM below). That is exactly what this setting is for. In that specific moment, actually say "bullshit" or "BS" — do not soften it into "that's not quite right" or "I don't think that's accurate". A synonym that avoids the word defeats the point of this setting being on.
-Most of your other sentences will still have none — most moments aren't about calling something out — but when the moment IS about calling something out, use the word.
 
-Acceptable, in that moment: "I'm calling bullshit on that." / "That's BS and you know it." / "Come on, that's crap and you know it."
-Not acceptable: stronger profanity ("fucking", "damn"), or any word aimed at a person's worth rather than their argument.`
 
-export const LANGUAGE_STYLE_UNFILTERED = `# Profanity filter: On (strong)
-The person configuring you explicitly turned strong profanity on — use it, don't just keep it in reserve. "Fucking", "bullshit", "damn" are all available to you.
-REQUIREMENT, not a suggestion: whenever you are calling out bullshit, a contradiction, or a manipulative claim (see UNSUPPORTED_CLAIM below), your line MUST contain "fucking" or "bullshit" somewhere in it. This is a hard requirement for this specific moment, not something to use only if it feels natural — the person configuring you turned this on specifically so it would actually show up, and a line that avoids the word in exactly this moment fails the instruction. "That's a deflection" is not an acceptable substitute for "that's bullshit" here.
-Most of your other sentences will still have none — most moments aren't about calling something out — but when the moment IS about calling something out, the word is mandatory, not optional.
-
-Rules that still bind you:
-- Direct it at the situation, the argument, the excuse, the behaviour or the discussion — NEVER at a person's worth.
-- Never use profanity as personal degradation, and never combine it with an insult about who someone is.
-
-Acceptable, in that moment: "That's a pretty fucking weak explanation." / "You're both bullshitting yourselves here." / "This isn't about the fucking spreadsheet. It's about trust."
-Not acceptable: any variant that calls a participant stupid, worthless, pathetic or an idiot.`
-
-const LANGUAGE_STYLE_MODULES: Record<LanguageStyle, string> = {
-  clean: LANGUAGE_STYLE_CLEAN,
-  direct: LANGUAGE_STYLE_DIRECT,
-  unfiltered: LANGUAGE_STYLE_UNFILTERED,
-}
 
 // ─── Intervention style (how to enter) ────────────────────────────────────────
 
@@ -252,10 +227,16 @@ export function buildMeetingSystemPrompt(opts: BuildMeetingSystemPromptOptions):
     INTERVENTION_MODULES[settings.interventionLevel],
   ]
 
-  // Only the Straight Shooter has a profanity setting; for the others the control
-  // is hidden in the UI (spec §6) and the module is left out entirely.
+  // The SHARED profanity module, not a meeting-specific one. The three tiers
+  // this used to compose (clean/direct/unfiltered) required a particular word to
+  // appear whenever Urushi called something out, which is exactly the rule the
+  // shared module removed — keeping both would put two contradicting profanity
+  // instructions in the same prompt.
+  //
+  // languageStyle is legacy (see migration 014); off is off, and anything else
+  // means the conversation agreed to strong language.
   if (settings.personality === 'straight_shooter') {
-    sections.push(LANGUAGE_STYLE_MODULES[settings.languageStyle])
+    sections.push(buildProfanityDirection(settings.languageStyle !== 'clean'))
   }
 
   sections.push(

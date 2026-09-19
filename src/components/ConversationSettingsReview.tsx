@@ -28,6 +28,8 @@ import {
   type ConversationSettings,
 } from '@/lib/conversation/settings'
 import { getPreviewScenario, getStylePreview } from '@/lib/conversation/previews'
+import { PROFANITY_HELPER_TEXT } from '@/lib/conversation/profanityExamples'
+import { ProfanityDisclosure } from './ProfanityDisclosure'
 
 interface Props {
   settings: ConversationSettings
@@ -109,12 +111,15 @@ export function ConversationSettingsReview({
               {sharedDevice ? 'Everyone here agrees to strong language' : 'I agree to strong language'}
             </span>
             <span className="font-label-sm text-on-surface-variant text-[12px] leading-snug">
-              Urushi may swear for emphasis. No personal abuse. This is optional — you can continue without it, and it
-              stays off unless everyone agrees.
+              {PROFANITY_HELPER_TEXT} Optional — you can continue without it, and it stays off unless everyone agrees.
             </span>
           </span>
         </label>
       )}
+
+      {/* Outside the label: tapping "What kind of language?" must not toggle the
+          checkbox, and people need to read this BEFORE deciding. */}
+      {settings.allowProfanity && onAcceptProfanityChange && <ProfanityDisclosure />}
     </div>
   )
 }

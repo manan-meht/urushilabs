@@ -5,6 +5,10 @@ import { RoomInterveneSchema } from '@/lib/validation/schemas'
 import { decideIntervention, type RoomTranscriptEntry } from '@/lib/ai/room/mediationController'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
 import { getRealtimeConfig } from '@/lib/ai/realtime/config'
+import { getConversationSettings } from '@/lib/conversation/getSettings'
+import { detectProfanityObjection } from '@/lib/conversation/profanityObjection'
+import { disableProfanity } from '@/lib/conversation/acceptance'
+import { conversationSettingsToRow } from '@/lib/conversation/settings'
 import { trackRoomEvent, ROOM_ANALYTICS_EVENTS } from '@/lib/analytics/roomEvents'
 import type { DbRoomParticipant, DbRoomTranscriptSegment } from '@/lib/db/types'
 
@@ -106,6 +110,21 @@ export async function POST(
   const secondsSinceLastIntervention = lastIntervention?.triggered_at
     ? (Date.now() - new Date(lastIntervention.triggered_at).getTime()) / 1000
     : Number.MAX_SAFE_INTEGER
+
+  // Withdrawing consent to swearing takes effect NOW, before this utterance is
+  // even judged — not on the next turn, and not subject to anyone else agreeing.
+  // Someone asking the mediator to stop and being sworn at once more is a trust
+  // failure there is no recovering from, so this does not wait on the model
+  // choosing to comply with a prompt.
+  let { effective: conversationSettings } = await getConversationSettings(access.caseId)
+  if (conversationSettings.allowProfanity && detectProfanityObjection(content)) {
+    conversationSettings = disableProfanity(conversationSettings)
+    await db
+      .from('cases')
+      .update(conversationSettingsToRow(conversationSettings))
+      .eq('id', access.caseId)
+    console.info('[room/intervene] Strong language disabled at a participant\'s request.')
+  }
 
   // Can we attribute anything at all? Without a calibrated speaker label, every
   // turn resolves to "Unknown speaker" and the prompt must be told so — see
