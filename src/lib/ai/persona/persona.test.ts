@@ -132,8 +132,8 @@ describe('buildMediatorPersona — strong language', () => {
 
   it('shows both a permitted and a forbidden use of the same register', () => {
     const prompt = buildMediatorPersona(settings(shooter))
-    // Untargeted interjection — allowed.
-    expect(prompt).toContain('phir wahi gol-gol baat')
+    // Untargeted, aimed at the excuse — allowed.
+    expect(prompt).toContain("Yeh 'communication gap' wala explanation bullshit hai")
     // Same register, aimed at a person — forbidden.
     expect(prompt).toContain('Tu chutiya hai')
     expect(prompt).toContain('Tum dono chutiye ho')
@@ -202,5 +202,73 @@ describe('buildPersonaLanguageReminder', () => {
     expect(buildPersonaLanguageReminder(settings({ language: 'english' }))).toBe('')
     expect(buildPersonaLanguageReminder(settings({ language: 'hindi' }))).toContain('Hindi')
     expect(buildPersonaLanguageReminder(settings({ language: 'hinglish' }))).toContain('Hinglish')
+  })
+})
+
+describe('the bhenchod exception is narrow', () => {
+  const shooter = { personality: 'straight_shooter', allowProfanity: true, language: 'hinglish' } as const
+
+  it('permits it as an exclamation about the conversation', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('standalone exclamation')
+    expect(prompt).toContain('never a label')
+    expect(prompt).toContain('phir wahi gol-gol baat')
+  })
+
+  it('does not open the door to other family or sexualised gaalis', () => {
+    // The permission is for exactly one word. An earlier version allowed
+    // "conventionally family-based expressions" generally, which is a much
+    // wider door than anyone agreed to.
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('does not open the door to any other')
+    expect(prompt).toContain('no sexualised gaalis')
+  })
+
+  it('requires a clean attempt first', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('ask plainly and try once to redirect in clean language')
+    expect(prompt).toContain('Do not escalate straight to it')
+  })
+
+  it('shows the same word rejected when aimed at a person', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('Tu bhenchod hai')
+    expect(prompt).toContain('Bhenchod, tujhe samajh nahi aata?')
+  })
+
+  it('bars it during grief, trauma, fear, coercion or abuse', () => {
+    expect(buildMediatorPersona(settings(shooter))).toContain('grief, trauma, fear, coercion or abuse')
+  })
+
+  it('bars repetition in consecutive turns and profanity-only replies', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('never in two of your turns in a row')
+    expect(prompt).toContain('A profanity-only reaction is not a contribution')
+  })
+
+  it('never reaches an English conversation at all', () => {
+    // Stripped from the prompt entirely rather than instructed against: a word
+    // that does not appear cannot be reached for.
+    const english = buildMediatorPersona(settings({ ...shooter, language: 'english' }))
+    expect(english).toContain('Strong language: On')
+    expect(english).not.toContain('bhenchod')
+    expect(english).not.toContain('Bhenchod')
+  })
+
+  it('appears for Hindi and Hinglish', () => {
+    for (const language of ['hindi', 'hinglish'] as const) {
+      expect(buildMediatorPersona(settings({ ...shooter, language })), language).toContain('bhenchod')
+    }
+  })
+
+  it('is absent entirely when strong language is off', () => {
+    const off = buildMediatorPersona(settings({ personality: 'straight_shooter', language: 'hinglish' }))
+    expect(off).toContain('Strong language: Off')
+    expect(off).not.toContain('bhenchod')
+  })
+
+  it('is absent from records even with everything agreed', () => {
+    const record = buildMediatorPersona(settings(shooter), { record: true })
+    expect(record).not.toContain('bhenchod')
   })
 })

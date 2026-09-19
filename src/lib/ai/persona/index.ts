@@ -64,7 +64,10 @@ export function buildMediatorPersona(
       script: settings.textScript,
       includeScript: opts.written === true,
     }),
-    buildProfanityDirection(settings.allowProfanity, { record: opts.record === true }),
+    buildProfanityDirection(settings.allowProfanity, {
+      record: opts.record === true,
+      language: settings.language,
+    }),
   ].join('\n\n')
 }
 

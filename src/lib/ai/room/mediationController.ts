@@ -83,6 +83,16 @@ export interface MediationContext {
    * spokenLanguage.ts. Empty or English-only means no special direction.
    */
   spokenLanguages?: string[]
+  /**
+   * Someone just asked Urushi to stop swearing and it has been turned off for
+   * the session.
+   *
+   * Disabling silently would leave the person who asked with no idea whether
+   * they were heard, and no way to find out until Urushi next happens to speak.
+   * A brief acknowledgement closes that loop — and it must be brief, because
+   * dwelling on it makes an awkward moment bigger than it was.
+   */
+  profanityJustDisabled?: boolean
 }
 
 export async function decideIntervention(ctx: MediationContext): Promise<InterventionDecision> {

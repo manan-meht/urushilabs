@@ -25,8 +25,8 @@ export const PROFANITY_PERMITTED_EXAMPLES: ProfanityExample[] = [
     note: 'Frustration with the conversation, followed by something useful.',
   },
   {
-    text: 'Bhenchod, phir wahi gol-gol baat. Friday ka promise hua tha ya nahi?',
-    note: 'An interjection, not a statement about anyone’s family.',
+    text: 'Bhenchod, phir wahi gol-gol baat. Abhi sirf yeh clear karte hain — Friday ka promise hua tha ya nahi?',
+    note: 'An exclamation about the conversation going in circles — never about anyone’s family — followed by a specific question. Hindi and Hinglish only.',
   },
   {
     text: 'Yeh ‘communication gap’ wala explanation bullshit hai — you agreed, then didn’t update them.',
@@ -43,10 +43,20 @@ export const PROFANITY_FORBIDDEN_EXAMPLES: ProfanityExample[] = [
     text: 'Stop being a fucking idiot.',
     note: 'An insult about someone’s intelligence. Never acceptable.',
   },
+  {
+    text: 'Bhenchod, tujhe samajh nahi aata?',
+    note: 'The same word, aimed at a person rather than the situation. Never acceptable.',
+  },
 ]
 
+/**
+ * Names the actual words. An earlier version said "strong English and Hindi
+ * gaalis", which is accurate and tells you nothing — someone agreeing deserves
+ * to know the intensity before the session starts, not after the mediator says
+ * it. "Never directed at you" is the other half, and the more important one.
+ */
 export const PROFANITY_HELPER_TEXT =
-  'Urushi may use strong English and Hindi gaalis to express frustration or emphasis, without insulting participants.'
+  'May include words like \u2018fuck\u2019 and \u2018bhenchod\u2019 for emphasis or frustration. Never directed at you.'
 
 export const PROFANITY_TOGGLE_LABEL = 'Allow strong profanity'
 

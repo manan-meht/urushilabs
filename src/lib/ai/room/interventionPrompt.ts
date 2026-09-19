@@ -115,6 +115,12 @@ ${buildSpokenLanguageDirection(ctx.spokenLanguages ?? [])}`
     : "Mediation has NOT started yet — the group hasn't begun discussing the dispute. " +
       'Be conversationally present and help them get started.'
 
+  const profanityWithdrawn = ctx.profanityJustDisabled
+    ? '\nSomeone just asked you to stop using strong language, and it has now been turned off for the ' +
+      'rest of this session. Acknowledge that in one short clause — no apology speech, no dwelling on ' +
+      'it — and carry straight on with the substance in clean language.\n'
+    : ''
+
   const addressed = ctx.directlyAddressed
     ? '\nA participant just addressed you directly and asked you to speak. Answer them.\n'
     : ''
@@ -140,7 +146,7 @@ Therefore:
     : ''
 
   const user = `Session phase: ${phase}
-${addressed}${attribution}
+${addressed}${profanityWithdrawn}${attribution}
 Topic: ${ctx.topic}
 ${ctx.contextSummary ? `Background: ${ctx.contextSummary}\n` : ''}${ctx.currentIssueTitle ? `Current issue: ${ctx.currentIssueTitle}\n` : ''}
 Recent conversation (oldest first):

@@ -117,12 +117,14 @@ export async function POST(
   // failure there is no recovering from, so this does not wait on the model
   // choosing to comply with a prompt.
   let { effective: conversationSettings } = await getConversationSettings(access.caseId)
+  let profanityJustDisabled = false
   if (conversationSettings.allowProfanity && detectProfanityObjection(content)) {
     conversationSettings = disableProfanity(conversationSettings)
     await db
       .from('cases')
       .update(conversationSettingsToRow(conversationSettings))
       .eq('id', access.caseId)
+    profanityJustDisabled = true
     console.info('[room/intervene] Strong language disabled at a participant\'s request.')
   }
 
@@ -152,7 +154,8 @@ export async function POST(
     recentTranscript,
     latestUtterance: { speakerName, content },
     secondsSinceLastIntervention,
-    directlyAddressed: detectDirectAddress(content),
+    directlyAddressed: detectDirectAddress(content) || profanityJustDisabled,
+    profanityJustDisabled,
     mediationStarted,
     speakersIdentified,
     // Urushi speaks the room's language, in the room's register — see spokenLanguage.ts.
