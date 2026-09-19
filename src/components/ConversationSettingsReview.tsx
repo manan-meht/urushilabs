@@ -27,7 +27,7 @@ import {
   MEDIATOR_PERSONALITY_LABELS,
   type ConversationSettings,
 } from '@/lib/conversation/settings'
-import { getStylePreview, PREVIEW_SCENARIO } from '@/lib/conversation/previews'
+import { getPreviewScenario, getStylePreview } from '@/lib/conversation/previews'
 
 interface Props {
   settings: ConversationSettings
@@ -89,9 +89,9 @@ export function ConversationSettingsReview({
 
       {showPreview && (
         <div className="mt-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
-          <p className="font-label-sm text-outline mb-2">{PREVIEW_SCENARIO[settings.language]}</p>
+          <p className="font-label-sm text-outline mb-2">{getPreviewScenario(settings.language, settings.textScript)}</p>
           <p className="font-body-md text-on-surface italic leading-snug">
-            &ldquo;{getStylePreview(settings.personality, settings.language, settings.allowProfanity)}&rdquo;
+            &ldquo;{getStylePreview(settings.personality, settings.language, settings.textScript, settings.allowProfanity)}&rdquo;
           </p>
         </div>
       )}

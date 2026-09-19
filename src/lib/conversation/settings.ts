@@ -70,9 +70,15 @@ export const MEDIATOR_PERSONALITY_ICONS: Record<MediatorPersonality, string> = {
   deal_maker: 'balance',
 }
 
+/**
+ * Script names only. An earlier version labelled these "Devanagari (हिंदी)" and
+ * "Roman (Hinglish)", which read as a second language choice rather than a way
+ * of writing the language already chosen — and led to exactly that confusion in
+ * use.
+ */
 export const TEXT_SCRIPT_LABELS: Record<TextScript, string> = {
-  devanagari: 'Devanagari (हिंदी)',
-  roman: 'Roman (Hinglish)',
+  devanagari: 'Devanagari — देवनागरी',
+  roman: 'Roman — abc',
 }
 
 /**

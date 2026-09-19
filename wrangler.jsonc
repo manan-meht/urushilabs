@@ -22,7 +22,7 @@
     "OPENAI_TRANSCRIPTION_MODEL": "whisper-1",
     "DEMO_MODE": "false",
     "LIVE_MEDIATION_ENABLED": "false",
-    "LIVE_MEDIATION_ALLOWED_EMAILS": "",
+    "LIVE_MEDIATION_ALLOWED_EMAILS": "mananenator@gmail.com",
     "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
     "OPENAI_REALTIME_TRANSCRIBE_MODEL": "gpt-4o-transcribe",
     "OPENAI_REALTIME_VOICE": "marin",

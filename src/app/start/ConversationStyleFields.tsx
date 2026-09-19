@@ -31,7 +31,7 @@ import {
   type MediatorPersonality,
   type TextScript,
 } from '@/lib/conversation/settings'
-import { getStylePreview, PREVIEW_SCENARIO } from '@/lib/conversation/previews'
+import { getPreviewScenario, getStylePreview } from '@/lib/conversation/previews'
 
 export interface ConversationStyleValue {
   language: ConversationLanguage
@@ -228,9 +228,9 @@ export function ConversationStyleFields({ value, onChange, showScript = false, d
 
       {previewFor === value.personality && (
         <div className="mt-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
-          <p className="font-label-sm text-outline mb-2">{PREVIEW_SCENARIO[value.language]}</p>
+          <p className="font-label-sm text-outline mb-2">{getPreviewScenario(value.language, value.textScript)}</p>
           <p className="font-body-md text-on-surface italic leading-snug">
-            &ldquo;{getStylePreview(value.personality, value.language, value.allowProfanity)}&rdquo;
+            &ldquo;{getStylePreview(value.personality, value.language, value.textScript, value.allowProfanity)}&rdquo;
           </p>
         </div>
       )}
