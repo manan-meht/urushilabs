@@ -3,33 +3,31 @@
 /**
  * Agent configuration step of the Meeting Mediation setup flow (spec §18).
  *
- * Deliberately lightweight: the personality cards, then compact pill groups. The
- * Personality, language and profanity are NOT here: they are agreed once for the
+ * Covers only what a meeting alone knows: what Urushi sounds like (voice gender,
+ * accent region) and how often it steps in. Deliberately lightweight — three
+ * compact groups, no cards competing with the ones on the previous screen.
+ *
+ * Personality, language and profanity are NOT here. They are agreed once for the
  * whole conversation in ConversationStyleFields and stored on the case, because
- * having them in both places let a meeting run as one personality and be written
- * up as another. What remains is what only a meeting has — voice, accent region,
- * and how often to interrupt.
+ * asking twice let a meeting run as one personality and be written up as another
+ * — the live prompt read the meeting row, the final report read the case. The
+ * props type is the meeting-only subset so this screen has nowhere to put them
+ * even if someone tries.
  *
- * (was: Language row only appears for the Indian region, and Language style only for
- * Straight Shooter, so the page never shows more than the current choice implies.
- *
- * Label, description and icon come from the shared conversation settings so this
- * screen cannot drift into describing the same personality differently to the
- * rest of the product.
+ * Note the intervention level named 'chair' is a frequency, not a personality;
+ * it shares a word with nothing else here.
  */
 
 import type {
   InterventionLevel,
-  MeetingAgentSettings,
+  MeetingOnlyAgentSettings,
   VoiceGender,
   VoiceRegion,
 } from '@/lib/meeting/agentSettings'
-import {
-} from '@/lib/conversation/settings'
 
 interface Props {
-  settings: MeetingAgentSettings
-  onChange: (next: MeetingAgentSettings) => void
+  settings: MeetingOnlyAgentSettings
+  onChange: (next: MeetingOnlyAgentSettings) => void
 }
 
 const INTERVENTION_OPTIONS: Array<{
@@ -68,7 +66,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function MeetingAgentSetup({ settings, onChange }: Props) {
-  function update<K extends keyof MeetingAgentSettings>(key: K, value: MeetingAgentSettings[K]) {
+  function update<K extends keyof MeetingOnlyAgentSettings>(key: K, value: MeetingOnlyAgentSettings[K]) {
     onChange({ ...settings, [key]: value })
   }
 
@@ -131,7 +129,6 @@ export function MeetingAgentSetup({ settings, onChange }: Props) {
           })}
         </div>
       </div>
-
     </div>
   )
 }

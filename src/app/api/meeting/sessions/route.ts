@@ -6,7 +6,11 @@ import { consumeRoomCredit } from '@/lib/db/credits'
 import { isMeetingMediationEnabled } from '@/lib/featureFlags'
 import { ConversationSettingsSchema, CreateMeetingSessionSchema } from '@/lib/validation/schemas'
 import { conversationSettingsToRow, normalizeConversationSettings } from '@/lib/conversation/settings'
-import { agentSettingsToRow, normalizeAgentSettings } from '@/lib/meeting/agentSettings'
+import {
+  meetingOnlyAgentSettingsToRow,
+  normalizeMeetingOnlySettings,
+  withConversationSettings,
+} from '@/lib/meeting/agentSettings'
 import { extractFirstName } from '@/lib/invitation'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS } from '@/lib/analytics/meetingEvents'
 import { sendNotification } from '@/lib/notifications'
@@ -34,14 +38,15 @@ export async function POST(req: NextRequest) {
   }
 
   const { participants, topic, contextSummary, agentSettings } = parsed.data
-  // Normalizes partial/absent input to complete settings and forces Chair to
-  // 'clean' language style regardless of what the client sent (spec §6).
-  const resolvedAgentSettings = normalizeAgentSettings(agentSettings)
+  // Voice, accent and how often to interrupt: the axes the meeting owns, and the
+  // only ones written to meeting_sessions.
+  const meetingOnlySettings = normalizeMeetingOnlySettings(agentSettings)
 
   // Parsed off the raw body rather than folded into CreateMeetingSessionSchema:
   // the same block rides on all four create routes, each with its own mode schema.
-  // Distinct from agentSettings above — these three axes live on `cases` and are
-  // shared with every other mode; agentSettings keeps the meeting-only ones.
+  // Distinct from agentSettings above — these axes live on `cases` and are shared
+  // with every other mode, including the personality and profanity the meeting
+  // setup step no longer asks about a second time.
   const settingsParsed = ConversationSettingsSchema.safeParse(
     (body as { conversationSettings?: unknown }).conversationSettings ?? {}
   )
@@ -50,6 +55,11 @@ export async function POST(req: NextRequest) {
   }
   // The normalizer, not the client, decides what is stored.
   const conversationSettings = normalizeConversationSettings(settingsParsed.data)
+
+  // What the agent will actually be, once the case's shared settings are folded
+  // in. Recorded in analytics below, but NOT persisted on the meeting row — see
+  // meetingOnlyAgentSettingsToRow.
+  const resolvedAgentSettings = withConversationSettings(meetingOnlySettings, conversationSettings)
 
   const initiatorFirstName = extractFirstName(
     (user.user_metadata?.['full_name'] as string | undefined) ?? user.email ?? 'The organizer'
@@ -98,7 +108,7 @@ export async function POST(req: NextRequest) {
         participant_count: participants.length,
         topic,
         context_summary: contextSummary ?? null,
-        ...agentSettingsToRow(resolvedAgentSettings),
+        ...meetingOnlyAgentSettingsToRow(meetingOnlySettings),
       })
       .select('*')
       .single()

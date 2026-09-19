@@ -9,33 +9,29 @@ import {
   type ConversationStyleValue,
 } from './ConversationStyleFields'
 import {
-  DEFAULT_MEETING_AGENT_SETTINGS,
-  type MeetingAgentSettings,
+  DEFAULT_MEETING_ONLY_AGENT_SETTINGS,
+  type MeetingOnlyAgentSettings,
 } from '@/lib/meeting/agentSettings'
-import { MEDIATOR_PERSONALITY_LABELS } from '@/lib/conversation/settings'
+import {
+  CONVERSATION_LANGUAGE_LABELS,
+  MEDIATOR_PERSONALITY_LABELS,
+} from '@/lib/conversation/settings'
 
 interface ParticipantField {
   name: string
   email: string
 }
 
-const INTERVENTION_LABEL: Record<MeetingAgentSettings['interventionLevel'], string> = {
+const INTERVENTION_LABEL: Record<MeetingOnlyAgentSettings['interventionLevel'], string> = {
   observer: 'Observer',
   facilitator: 'Facilitator',
   chair: 'Chair the meeting',
 }
 
-const REGION_LABEL: Record<MeetingAgentSettings['region'], string> = {
+const REGION_LABEL: Record<MeetingOnlyAgentSettings['region'], string> = {
   american: 'American',
   singaporean: 'Singaporean',
   indian: 'Indian',
-}
-
-const LANGUAGE_LABEL: Record<MeetingAgentSettings['language'], string> = {
-  english: 'English',
-  hindi: 'Hindi',
-  hinglish: 'Hinglish',
-  auto: 'Auto-switch',
 }
 
 interface Props {
@@ -47,7 +43,9 @@ interface Props {
 export function MeetingSetupForm({ userFirstName, userEmail, roomsRemaining }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<'details' | 'agent' | 'review'>('details')
-  const [agentSettings, setAgentSettings] = useState<MeetingAgentSettings>(DEFAULT_MEETING_AGENT_SETTINGS)
+  // Voice, accent and intervention frequency only. Personality, language and
+  // profanity live in `style` below — one answer, one place.
+  const [agentSettings, setAgentSettings] = useState<MeetingOnlyAgentSettings>(DEFAULT_MEETING_ONLY_AGENT_SETTINGS)
   const [participantCount, setParticipantCount] = useState<2 | 3>(2)
   const [participants, setParticipants] = useState<ParticipantField[]>([
     { name: userFirstName, email: userEmail ?? '' },
@@ -201,12 +199,12 @@ export function MeetingSetupForm({ userFirstName, userEmail, roomsRemaining }: P
           <div>
             <p className="font-label-sm text-outline uppercase tracking-widest mb-1">Urushi</p>
             <p className="font-body-md text-on-surface">
-              {MEDIATOR_PERSONALITY_LABELS[agentSettings.personality]} · {INTERVENTION_LABEL[agentSettings.interventionLevel]}
+              {MEDIATOR_PERSONALITY_LABELS[style.personality]} · {INTERVENTION_LABEL[agentSettings.interventionLevel]}
             </p>
             <p className="font-label-sm text-on-surface-variant mt-0.5">
               {agentSettings.voiceGender === 'female' ? 'Female' : 'Male'} voice · {REGION_LABEL[agentSettings.region]}
-              {agentSettings.region === 'indian' && ` · ${LANGUAGE_LABEL[agentSettings.language]}`}
-              {agentSettings.personality === 'straight_shooter' && ` · ${agentSettings.languageStyle} language`}
+              {` · ${CONVERSATION_LANGUAGE_LABELS[style.language]}`}
+              {style.allowProfanity && ' · strong language on'}
             </p>
           </div>
           <div>

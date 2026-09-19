@@ -247,17 +247,23 @@ export const MeetingParticipantInputSchema = z.object({
 export type MeetingParticipantInput = z.infer<typeof MeetingParticipantInputSchema>
 
 /**
- * How Urushi behaves, sounds and intervenes (see src/lib/meeting/agentSettings.ts).
- * Every field is optional so existing clients that don't send it keep working —
- * omitted fields resolve to DEFAULT_MEETING_AGENT_SETTINGS server-side.
+ * How Urushi sounds and how often it intervenes in a meeting (see
+ * src/lib/meeting/agentSettings.ts). Every field is optional so existing clients
+ * that don't send it keep working — omitted fields resolve to
+ * DEFAULT_MEETING_ONLY_AGENT_SETTINGS server-side.
+ *
+ * `personality`, `language` and `languageStyle` are NOT accepted here, even
+ * though the meeting settings object still carries them. They are agreed once
+ * for the whole conversation and arrive in the same request as
+ * `conversationSettings`; accepting them in both places is what let a meeting
+ * run as the Straight Shooter and be written up as the Diplomat. A stale client
+ * that still sends them is not an error — zod strips unknown keys, so the shared
+ * value simply wins.
  */
 export const MeetingAgentSettingsSchema = z.object({
-  personality: z.enum(['diplomat', 'straight_shooter', 'deal_maker']).optional(),
   voiceGender: z.enum(['female', 'male']).optional(),
   region: z.enum(['american', 'singaporean', 'indian']).optional(),
-  language: z.enum(['english', 'hindi', 'hinglish', 'auto']).optional(),
   interventionLevel: z.enum(['observer', 'facilitator', 'chair']).optional(),
-  languageStyle: z.enum(['clean', 'direct', 'unfiltered']).optional(),
 })
 export type MeetingAgentSettingsInput = z.infer<typeof MeetingAgentSettingsSchema>
 

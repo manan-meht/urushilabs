@@ -13,9 +13,15 @@
 -- OFTEN to interrupt is a genuinely different axis from HOW to speak — that
 -- separation is load-bearing in the intervention tuning and is preserved.
 --
--- agent_language_style (clean/direct/unfiltered) also stays: the shared model
--- has a boolean allow_profanity, and this column refines it for meetings into
--- mild vs strong. Off is off in both; see src/lib/meeting/agentSettings.ts.
+-- agent_personality, agent_language and agent_language_style become read-only
+-- history. An earlier draft of this migration kept agent_language_style as a
+-- meeting-only refinement of allow_profanity (mild vs strong), but nothing could
+-- enforce "off in either place means off" once both were separately settable —
+-- and a three-way refinement of a boolean nobody can see a control for is a
+-- second source of truth with extra steps. The app now writes only the three
+-- meeting-owned columns; these three keep their pre-migration values so old
+-- sessions can still be read back, and are overlaid from the case at read time
+-- (see withConversationSettings in src/lib/meeting/agentSettings.ts).
 
 -- The CHECK has to go before the data can be rewritten to values it forbids.
 ALTER TABLE meeting_sessions
@@ -52,5 +58,9 @@ SET
 FROM meeting_sessions m
 WHERE m.case_id = c.id;
 
+COMMENT ON COLUMN meeting_sessions.agent_personality IS
+  'Legacy. Superseded by cases.mediator_personality; NULL on rows created after this migration.';
+COMMENT ON COLUMN meeting_sessions.agent_language IS
+  'Legacy. Superseded by cases.conversation_language; NULL on rows created after this migration.';
 COMMENT ON COLUMN meeting_sessions.agent_language_style IS
-  'Meeting-only refinement of cases.allow_profanity: clean = off, direct = mild, unfiltered = strong. Off in either place means off.';
+  'Legacy. Superseded by cases.allow_profanity; NULL on rows created after this migration.';

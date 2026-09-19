@@ -36,16 +36,40 @@ export interface MeetingAgentSettings {
 }
 
 /**
+ * The axes a meeting owns outright — the only ones its setup step asks about and
+ * the only ones its row stores.
+ *
+ * Personality, language and profanity are deliberately absent: they are agreed
+ * once for the whole conversation and live on `cases`. This type is what makes
+ * that structural rather than a convention — a setup form or a request body
+ * typed as MeetingOnlyAgentSettings has nowhere to put a competing personality.
+ * See withConversationSettings for how the two halves are recombined.
+ */
+export type MeetingOnlyAgentSettings = Pick<
+  MeetingAgentSettings,
+  'voiceGender' | 'region' | 'interventionLevel'
+>
+
+/**
  * Defaults (spec §19). Region defaults to American because that is what the
  * existing TTS configuration already represents — deliberately NOT inferred from
  * the user's name, email or locale.
  */
-export const DEFAULT_MEETING_AGENT_SETTINGS: MeetingAgentSettings = {
-  personality: 'diplomat',
+export const DEFAULT_MEETING_ONLY_AGENT_SETTINGS: MeetingOnlyAgentSettings = {
   voiceGender: 'female',
   region: 'american',
-  language: 'auto',
   interventionLevel: 'facilitator',
+}
+
+/**
+ * The full defaults, including the shared axes. Those three are only ever a
+ * fallback for a row written before conversation settings existed — for a live
+ * session withConversationSettings replaces them with the case's values.
+ */
+export const DEFAULT_MEETING_AGENT_SETTINGS: MeetingAgentSettings = {
+  ...DEFAULT_MEETING_ONLY_AGENT_SETTINGS,
+  personality: 'diplomat',
+  language: 'auto',
   languageStyle: 'direct',
 }
 
@@ -83,6 +107,26 @@ export function normalizeAgentSettings(raw: Partial<Record<keyof MeetingAgentSet
 }
 
 /**
+ * Normalizes the meeting-only half. Used on the create path, where the client
+ * sends nothing else — the shared axes arrive in the same request as
+ * `conversationSettings` and are resolved by the conversation normalizer.
+ */
+export function normalizeMeetingOnlySettings(
+  raw: Partial<Record<keyof MeetingOnlyAgentSettings, unknown>> | null | undefined
+): MeetingOnlyAgentSettings {
+  const r = raw ?? {}
+  return {
+    voiceGender: pick(VOICE_GENDERS, r.voiceGender, DEFAULT_MEETING_ONLY_AGENT_SETTINGS.voiceGender),
+    region: pick(REGIONS, r.region, DEFAULT_MEETING_ONLY_AGENT_SETTINGS.region),
+    interventionLevel: pick(
+      INTERVENTION_LEVELS,
+      r.interventionLevel,
+      DEFAULT_MEETING_ONLY_AGENT_SETTINGS.interventionLevel
+    ),
+  }
+}
+
+/**
  * Overlays the conversation's agreed settings onto a meeting's stored agent row.
  *
  * Personality, language and profanity are agreed ONCE for the whole conversation
@@ -96,7 +140,7 @@ export function normalizeAgentSettings(raw: Partial<Record<keyof MeetingAgentSet
  * only consulted for what it alone knows.
  */
 export function withConversationSettings(
-  agent: MeetingAgentSettings,
+  agent: MeetingOnlyAgentSettings,
   conversation: {
     personality: MeetingPersonality
     language: 'english' | 'hindi' | 'hinglish'
@@ -104,7 +148,7 @@ export function withConversationSettings(
   }
 ): MeetingAgentSettings {
   return normalizeAgentSettings({
-    ...agent,
+    ...normalizeMeetingOnlySettings(agent),
     personality: conversation.personality,
     language: conversation.language,
     // The 3-tier meeting style collapses to the shared boolean. Off is off; on
@@ -115,39 +159,60 @@ export function withConversationSettings(
   })
 }
 
-/** Language selection only applies to the Indian region (spec §5). */
+/**
+ * Which language Urushi speaks in the meeting.
+ *
+ * This used to force English outside the Indian region, back when language was a
+ * meeting-only control that happened to sit under the region pills. Language is
+ * now agreed for the whole conversation, so that gate would have meant a case
+ * configured in Hindi being mediated in English and then written up in Hindi —
+ * the same live-vs-report contradiction the shared settings model exists to
+ * remove. Region is an ACCENT axis only; what it sounds like is independent of
+ * what it speaks.
+ *
+ * 'auto' survives in the type for rows written before conversation settings
+ * existed; withConversationSettings never produces it.
+ */
 export function effectiveLanguage(settings: MeetingAgentSettings): AgentLanguage {
-  return settings.region === 'indian' ? settings.language : 'english'
+  return settings.language
 }
 
-/** Maps DB snake_case columns to the settings object. */
-export function agentSettingsFromRow(row: {
-  agent_personality?: unknown
+/**
+ * Maps the meeting-owned DB columns to the settings object.
+ *
+ * agent_personality, agent_language and agent_language_style are deliberately
+ * not read. Migration 014 copied whatever they held onto the case, so the case
+ * is now the only place those three are read from — including for sessions
+ * created before conversation settings existed. Reading them here as well would
+ * reintroduce exactly the second opinion this module exists to remove.
+ */
+export function meetingOnlyAgentSettingsFromRow(row: {
   agent_voice_gender?: unknown
   agent_region?: unknown
-  agent_language?: unknown
   agent_intervention_level?: unknown
-  agent_language_style?: unknown
-} | null | undefined): MeetingAgentSettings {
-  return normalizeAgentSettings({
-    personality: row?.agent_personality,
+} | null | undefined): MeetingOnlyAgentSettings {
+  return normalizeMeetingOnlySettings({
     voiceGender: row?.agent_voice_gender,
     region: row?.agent_region,
-    language: row?.agent_language,
     interventionLevel: row?.agent_intervention_level,
-    languageStyle: row?.agent_language_style,
   })
 }
 
-/** Maps the settings object to DB snake_case columns. */
-export function agentSettingsToRow(settings: MeetingAgentSettings): Record<string, string> {
+/**
+ * Maps the meeting-owned settings to DB snake_case columns.
+ *
+ * agent_personality, agent_language and agent_language_style are deliberately
+ * NOT written. Those three are the case's to hold, and a copy on the meeting row
+ * would be a second value free to drift from it — writing a derived duplicate is
+ * how the live session and the final report ended up disagreeing in the first
+ * place. They stay NULL on every new row, and migration 014 carried the values
+ * older rows held onto the case, which is now the only place they are read from.
+ */
+export function meetingOnlyAgentSettingsToRow(settings: MeetingOnlyAgentSettings): Record<string, string> {
   return {
-    agent_personality: settings.personality,
     agent_voice_gender: settings.voiceGender,
     agent_region: settings.region,
-    agent_language: settings.language,
     agent_intervention_level: settings.interventionLevel,
-    agent_language_style: settings.languageStyle,
   }
 }
 

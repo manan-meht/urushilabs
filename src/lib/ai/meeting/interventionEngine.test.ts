@@ -33,9 +33,14 @@ import {
 } from '@/lib/meeting/runtimeState'
 import {
   DEFAULT_MEETING_AGENT_SETTINGS,
+  DEFAULT_MEETING_ONLY_AGENT_SETTINGS,
+  effectiveLanguage,
+  meetingOnlyAgentSettingsToRow,
   normalizeAgentSettings,
+  normalizeMeetingOnlySettings,
   thresholdForReason,
   isUrgentReason,
+  withConversationSettings,
   type MeetingAgentSettings,
 } from '@/lib/meeting/agentSettings'
 import { buildMeetingSystemPrompt } from './personaPrompt'
@@ -351,13 +356,16 @@ describe('Test 8 — Indian region language handling', () => {
     expect(hindi).toContain('Do NOT write a caricatured')
   })
 
-  it('ignores language selection outside the Indian region', () => {
+  it('honours the language outside the Indian region — region is accent, not language', () => {
+    // Language is agreed for the whole conversation. Gating it on the accent
+    // region would mean a case configured in Hinglish being mediated in English
+    // and written up in Hinglish.
     const prompt = buildMeetingSystemPrompt({
       settings: settings({ region: 'american', language: 'hinglish' }),
       meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
     })
-    expect(prompt).toContain('Speak English.')
-    expect(prompt).not.toContain('natural Hinglish')
+    expect(prompt).toContain('natural Hinglish')
+    expect(prompt).toContain('Natural professional American English')
   })
 
   it('keeps Singaporean subtle rather than Singlish caricature', () => {
@@ -502,6 +510,110 @@ describe('Agent settings normalization', () => {
     const resolved = normalizeAgentSettings({ personality: 'nonsense', region: 'martian' })
     expect(resolved.personality).toBe('diplomat')
     expect(resolved.region).toBe('american')
+  })
+})
+
+// ─── One source of truth for the shared axes ─────────────────────────────────
+//
+// Personality, language and profanity are agreed once for the whole conversation
+// and stored on `cases`. They were briefly settable on the meeting row too, which
+// meant a meeting could run as the Straight Shooter (live prompt reads the
+// meeting row) and be written up as the Diplomat (final report reads the case).
+// These tests exist so that cannot come back.
+
+describe('Shared conversation settings win over the meeting row', () => {
+  const CONVERSATION = {
+    personality: 'straight_shooter',
+    language: 'hindi',
+    allowProfanity: true,
+  } as const
+
+  it('overrides a contradicting personality, language and style on the agent row', () => {
+    const stale = normalizeAgentSettings({
+      personality: 'diplomat',
+      language: 'english',
+      languageStyle: 'clean',
+      region: 'indian',
+      voiceGender: 'male',
+      interventionLevel: 'chair',
+    })
+
+    const resolved = withConversationSettings(stale, CONVERSATION)
+
+    expect(resolved.personality).toBe('straight_shooter')
+    expect(resolved.language).toBe('hindi')
+    expect(resolved.languageStyle).toBe('unfiltered')
+  })
+
+  it('leaves the meeting-owned axes exactly as configured', () => {
+    const resolved = withConversationSettings(
+      { voiceGender: 'male', region: 'singaporean', interventionLevel: 'observer' },
+      CONVERSATION
+    )
+
+    expect(resolved.voiceGender).toBe('male')
+    expect(resolved.region).toBe('singaporean')
+    expect(resolved.interventionLevel).toBe('observer')
+  })
+
+  it('collapses profanity-off to a clean style whatever the row said', () => {
+    const resolved = withConversationSettings(
+      DEFAULT_MEETING_ONLY_AGENT_SETTINGS,
+      { ...CONVERSATION, allowProfanity: false }
+    )
+    expect(resolved.languageStyle).toBe('clean')
+  })
+
+  it('never resolves to auto — auto is a legacy row value, not a shared choice', () => {
+    for (const language of ['english', 'hindi', 'hinglish'] as const) {
+      const resolved = withConversationSettings(DEFAULT_MEETING_ONLY_AGENT_SETTINGS, { ...CONVERSATION, language })
+      expect(resolved.language).toBe(language)
+      expect(effectiveLanguage(resolved)).toBe(language)
+    }
+  })
+
+  it('applies the language whatever the accent region is', () => {
+    for (const region of ['american', 'singaporean', 'indian'] as const) {
+      const resolved = withConversationSettings({ ...DEFAULT_MEETING_ONLY_AGENT_SETTINGS, region }, CONVERSATION)
+      expect(effectiveLanguage(resolved)).toBe('hindi')
+    }
+  })
+
+  it('drives the live prompt from the conversation personality, not the row', () => {
+    const prompt = buildMeetingSystemPrompt({
+      settings: withConversationSettings(DEFAULT_MEETING_ONLY_AGENT_SETTINGS, CONVERSATION),
+      meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
+    })
+    expect(prompt).toContain(PERSONALITY_MODULES.straight_shooter)
+    expect(prompt).not.toContain(PERSONALITY_MODULES.diplomat)
+  })
+})
+
+describe('Meeting rows store only the meeting-owned axes', () => {
+  it('writes voice, region and intervention level and nothing else', () => {
+    const row = meetingOnlyAgentSettingsToRow({
+      voiceGender: 'male',
+      region: 'indian',
+      interventionLevel: 'chair',
+    })
+    expect(row).toEqual({
+      agent_voice_gender: 'male',
+      agent_region: 'indian',
+      agent_intervention_level: 'chair',
+    })
+    // The shared axes must not be duplicated onto the meeting row — a copy is
+    // free to drift from the case it was copied from.
+    expect(row).not.toHaveProperty('agent_personality')
+    expect(row).not.toHaveProperty('agent_language')
+    expect(row).not.toHaveProperty('agent_language_style')
+  })
+
+  it('resolves an absent or partial meeting-only input to the documented defaults', () => {
+    expect(normalizeMeetingOnlySettings(null)).toEqual(DEFAULT_MEETING_ONLY_AGENT_SETTINGS)
+    expect(normalizeMeetingOnlySettings({ region: 'martian', voiceGender: 'male' })).toEqual({
+      ...DEFAULT_MEETING_ONLY_AGENT_SETTINGS,
+      voiceGender: 'male',
+    })
   })
 })
 
