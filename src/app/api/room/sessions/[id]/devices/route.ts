@@ -50,6 +50,16 @@ export async function POST(
     .single()
 
   if (error || !deviceRow) {
+    // A session may only have one live hardware device (migration 012's partial
+    // unique index), which is what stops two microphones ending up in one room.
+    // Hitting it is an ordinary "already done", not a failure, and reporting it
+    // as one sends people off debugging a system that is working.
+    if (error?.code === '23505') {
+      return NextResponse.json(
+        { error: 'A device is already paired to this session. Unpair it first if you want to use a different one.' },
+        { status: 409 }
+      )
+    }
     console.error('[room/devices] Failed to pair device:', error?.message)
     return NextResponse.json({ error: 'Failed to pair device.' }, { status: 500 })
   }
