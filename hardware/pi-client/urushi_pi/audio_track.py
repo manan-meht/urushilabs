@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import fractions
 import logging
+import queue
+import threading
 import time
 
 import numpy as np
@@ -30,6 +32,9 @@ FRAME_MS = 20  # standard WebRTC frame size
 #: Peak int16 amplitude below which a frame counts as silence. Comfort noise
 #: and room tone sit far below this; speech sits far above it.
 SILENCE_THRESHOLD = 500
+#: About two seconds of 20ms frames. Bounded so a stalled device cannot grow an
+#: unbounded backlog of stale audio that would play out minutes late.
+QUEUE_MAX_FRAMES = 100
 
 
 class MicrophoneStreamTrack(MediaStreamTrack):
@@ -114,6 +119,41 @@ class SpeakerPlayback:
         #: talking" from "the track is idling".
         self._last_audible_write: float | None = None
 
+        # ONE long-lived writer thread fed by a queue, rather than the asyncio
+        # loop writing directly and rather than a thread hop per frame.
+        #
+        # Writing on the loop starved aioice's ICE keepalives and dropped the
+        # connection every minute or two. The obvious fix — awaiting
+        # asyncio.to_thread(stream.write, pcm) — solved that and introduced a
+        # worse fault: at 20ms frames that is fifty thread-pool dispatches a
+        # second, the per-hop latency exceeds the frame duration, the device
+        # underruns and playback audibly breaks mid-word. Heard in a live
+        # session, in the middle of Urushi's opening line.
+        #
+        # A dedicated thread has neither problem: the loop only ever does a
+        # non-blocking put, and the blocking write happens exactly once per
+        # frame on a thread that already exists.
+        self._frames: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=QUEUE_MAX_FRAMES)
+        self._writer = threading.Thread(target=self._write_loop, name="urushi-speaker", daemon=True)
+        self._writer.start()
+
+    def _write_loop(self) -> None:
+        """Drains the queue into the device. Runs until close() sends None."""
+        while True:
+            pcm = self._frames.get()
+            if pcm is None:
+                return
+            try:
+                self._stream.write(pcm)
+            except Exception:  # noqa: BLE001 - a dead device must not kill the thread silently
+                logger.exception("Speaker write failed")
+                return
+            # Recorded HERE, not at enqueue time: this is the moment the audio
+            # actually reaches the device, which is what "has the room heard it?"
+            # is asking about.
+            if pcm.size and int(np.abs(pcm.astype(np.int32)).max()) > SILENCE_THRESHOLD:
+                self._last_audible_write = time.monotonic()
+
     async def run(self, track: MediaStreamTrack) -> None:
         try:
             while True:
@@ -124,24 +164,7 @@ class SpeakerPlayback:
                 frames = resampled if isinstance(resampled, list) else [resampled]
                 for f in frames:
                     pcm = f.to_ndarray().reshape(-1).astype(np.int16)
-
-                    # OFF THE EVENT LOOP. sounddevice's write() blocks until the
-                    # device has room, and a WebRTC track delivers continuously —
-                    # comfort noise between utterances, not just speech — so
-                    # calling it directly here parked the whole asyncio loop for
-                    # most of its life.
-                    #
-                    # aioice shares that loop. It has to send a STUN consent
-                    # check every ~5s and give up after 30s without a reply, so a
-                    # blocked loop meant missed keepalives and "Consent to send
-                    # expired" every minute or two. That looked exactly like the
-                    # wifi power-save fault we had already fixed, which is what
-                    # made it hard to see: same symptom, different cause, and
-                    # this one was ours.
-                    await asyncio.to_thread(self._stream.write, pcm)
-
-                    if pcm.size and int(np.abs(pcm.astype(np.int32)).max()) > SILENCE_THRESHOLD:
-                        self._last_audible_write = time.monotonic()
+                    self._enqueue(pcm)
         except asyncio.CancelledError:
             pass
         except MediaStreamError:
@@ -150,6 +173,23 @@ class SpeakerPlayback:
             # task dies with an unretrieved exception and dumps a traceback on
             # every clean shutdown.
             logger.debug("Remote audio track ended.")
+
+    def _enqueue(self, pcm: np.ndarray) -> None:
+        try:
+            self._frames.put_nowait(pcm)
+        except queue.Full:
+            # The device has fallen behind. Drop the OLDEST frame rather than
+            # block the event loop or accumulate latency — in a live conversation
+            # a momentary glitch beats audio that arrives seconds after the
+            # moment it belonged to.
+            try:
+                self._frames.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._frames.put_nowait(pcm)
+            except queue.Full:
+                pass
 
     @property
     def last_audible_write(self) -> float | None:
@@ -223,6 +263,10 @@ class SpeakerPlayback:
         logger.warning("Playback did not go idle within %.0fs — closing anyway.", timeout)
 
     def close(self) -> None:
+        # Stop the writer before the stream: writing to a closed stream raises,
+        # and the thread would surface it as an error on every clean shutdown.
+        self._frames.put(None)
+        self._writer.join(timeout=2.0)
         # stop() (unlike abort()) waits for buffers already handed to PortAudio.
         self._stream.stop()
         self._stream.close()
