@@ -1,11 +1,23 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { DevicePairing } from './DevicePairing'
+import { ConversationSettingsAgreement } from '@/components/ConversationSettingsAgreement'
+import { ConversationSettingsSummary } from '@/components/ConversationSettingsSummary'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 interface Props {
   sessionId: string
   caseReference: string
+  caseId: string
+  settings: ConversationSettings
+  /**
+   * The settings changed since anyone last agreed to them, so the earlier
+   * acceptance no longer counts and has to be collected again before the
+   * session can run under them.
+   */
+  needsAcceptance: boolean
 }
 
 const TIPS = [
@@ -15,8 +27,9 @@ const TIPS = [
   'Try to avoid loud background noise',
 ]
 
-export function RoomReadyView({ sessionId, caseReference }: Props) {
+export function RoomReadyView({ sessionId, caseReference, caseId, settings, needsAcceptance }: Props) {
   const router = useRouter()
+  const [accepted, setAccepted] = useState(!needsAcceptance)
 
   return (
     <div className="px-margin-mobile pt-stack-lg pb-stack-lg max-w-lg mx-auto text-center">
@@ -28,6 +41,22 @@ export function RoomReadyView({ sessionId, caseReference }: Props) {
       <p className="font-body-md text-on-surface-variant mb-8">
         Place this device somewhere everyone can hear and be heard.
       </p>
+
+      {!accepted ? (
+        <div className="mb-8 text-left">
+          <ConversationSettingsAgreement
+            caseId={caseId}
+            settings={settings}
+            sharedDevice
+            onAccepted={() => setAccepted(true)}
+            onDeclined={() => router.push(`/room/${caseReference}/consent`)}
+          />
+        </div>
+      ) : (
+        <div className="mb-8 text-left">
+          <ConversationSettingsSummary caseId={caseId} settings={settings} />
+        </div>
+      )}
 
       <div className="bg-surface-container-low rounded-xl border border-outline-variant/40 p-5 text-left mb-8">
         <p className="font-label-sm text-outline uppercase tracking-widest mb-3">Suggestions</p>
