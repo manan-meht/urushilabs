@@ -36,6 +36,11 @@ export async function POST(
   const { data: deviceRow, error } = await db
     .from('room_devices')
     .insert({
+      // Required since 012 made devices belong to a user rather than to a single
+      // session. This route still pairs session-scoped (the device is created
+      // already assigned), but every row needs an owner — without it the insert
+      // fails outright.
+      user_id: access.userId,
       session_id: id,
       case_id: access.caseId,
       device_token_hash: hashToken(token),
