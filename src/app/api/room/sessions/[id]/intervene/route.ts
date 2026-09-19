@@ -61,7 +61,14 @@ export async function POST(
   const [{ data: participants }, { data: recentSegments }, { data: lastIntervention }, { data: currentIssue }] = await Promise.all([
     db.from('room_participants').select('*').eq('session_id', id).order('participant_index'),
     db.from('room_transcript_segments').select('*').eq('session_id', id).order('sequence_number', { ascending: false }).limit(RECENT_TRANSCRIPT_WINDOW),
-    db.from('room_interventions').select('triggered_at').eq('session_id', id).order('triggered_at', { ascending: false }).limit(1).maybeSingle(),
+    // Only interventions Urushi actually SPOKE. Every decision is logged here,
+    // including LISTEN, so taking the latest row measured time since the last
+    // utterance was processed rather than since Urushi last said something —
+    // and in a conversation where people talk every few seconds that is always
+    // inside the cooldown. The effect was that every action except the two
+    // bypass ones (DEESCALATE, END_SESSION) was permanently downgraded to
+    // LISTEN, which read as a mediator that had simply decided not to speak.
+    db.from('room_interventions').select('triggered_at').eq('session_id', id).not('spoken_text', 'is', null).order('triggered_at', { ascending: false }).limit(1).maybeSingle(),
     access.session.current_issue_id
       ? db.from('room_issues').select('title').eq('id', access.session.current_issue_id).single()
       : Promise.resolve({ data: null }),
