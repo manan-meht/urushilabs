@@ -124,7 +124,22 @@ class SpeakerPlayback:
                 frames = resampled if isinstance(resampled, list) else [resampled]
                 for f in frames:
                     pcm = f.to_ndarray().reshape(-1).astype(np.int16)
-                    self._stream.write(pcm)
+
+                    # OFF THE EVENT LOOP. sounddevice's write() blocks until the
+                    # device has room, and a WebRTC track delivers continuously —
+                    # comfort noise between utterances, not just speech — so
+                    # calling it directly here parked the whole asyncio loop for
+                    # most of its life.
+                    #
+                    # aioice shares that loop. It has to send a STUN consent
+                    # check every ~5s and give up after 30s without a reply, so a
+                    # blocked loop meant missed keepalives and "Consent to send
+                    # expired" every minute or two. That looked exactly like the
+                    # wifi power-save fault we had already fixed, which is what
+                    # made it hard to see: same symptom, different cause, and
+                    # this one was ours.
+                    await asyncio.to_thread(self._stream.write, pcm)
+
                     if pcm.size and int(np.abs(pcm.astype(np.int32)).max()) > SILENCE_THRESHOLD:
                         self._last_audible_write = time.monotonic()
         except asyncio.CancelledError:
