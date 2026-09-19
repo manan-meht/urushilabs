@@ -68,6 +68,11 @@ const INVITATION_PATTERNS: RegExp[] = [
 
   // Hindi, Devanagari.
   /आप\s*क्या\s*(कहते|कहती|सोचते|सोचती|बोलते|बोलती)/,
+  // "आपको क्या लगता है" — how it actually gets asked out loud, and the form this
+  // originally missed: a participant said "उरुशी, आपको क्या लगता है?" live and
+  // was refused on cooldown, because only the आप क्या कहते/सोचते shapes existed.
+  /आपको\s*क्या\s*लग(ता|ती|ा)/,
+  /क्या\s*कहना\s*है/,
   /आपक[ीा]\s*क्या\s*(राय|ख्याल|विचार)/,
   /कुछ\s*(बोलिए|बोलिये|बोलो|कहिए|कहिये|कहो)/,
   /मदद\s*(कीजिए|कीजिये|करिए|करिये|करो)/,
@@ -80,6 +85,8 @@ const INVITATION_PATTERNS: RegExp[] = [
   // Hindi, romanized — Hinglish speakers code-switch mid-sentence and the
   // transcriber follows whichever script the phrase was actually spoken in.
   /\baap\s*kya\s*(kehte|kehti|sochte|sochti|bolte|bolti)\b/i,
+  /\baapko\s*kya\s*lag(ta|ti|a)\b/i,
+  /\bkya\s*kehna\s*hai\b/i,
   /\baapk[ia]\s*kya\s*(raay|ray|khayal|vichar)\b/i,
   /\bkuch\s*(bolo|boliye|kaho|kahiye)\b/i,
   /\bmadad\s*(karo|kijiye|kijie|kariye)\b/i,

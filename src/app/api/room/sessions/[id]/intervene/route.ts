@@ -4,6 +4,7 @@ import { requireRoomSessionAccess, isAccessError } from '@/lib/room/getSession'
 import { RoomInterveneSchema } from '@/lib/validation/schemas'
 import { decideIntervention, type RoomTranscriptEntry } from '@/lib/ai/room/mediationController'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
+import { getRealtimeConfig } from '@/lib/ai/realtime/config'
 import { trackRoomEvent, ROOM_ANALYTICS_EVENTS } from '@/lib/analytics/roomEvents'
 import type { DbRoomParticipant, DbRoomTranscriptSegment } from '@/lib/db/types'
 
@@ -106,10 +107,23 @@ export async function POST(
     ? (Date.now() - new Date(lastIntervention.triggered_at).getTime()) / 1000
     : Number.MAX_SAFE_INTEGER
 
-  // Mediation counts as started once an issue is being tracked, or once there's
-  // been enough back-and-forth that the group is plainly into the substance.
+  // Can we attribute anything at all? Without a calibrated speaker label, every
+  // turn resolves to "Unknown speaker" and the prompt must be told so — see
+  // MediationContext.speakersIdentified.
+  const speakersIdentified = participantList.some((p) => p.speaker_label)
+
+  // Mediation counts as started once an issue is being tracked, or once the
+  // PARTICIPANTS have said enough that the group is plainly into the substance.
   // Before that, Urushi is conversationally present rather than listen-only.
-  const mediationStarted = Boolean(access.session.current_issue_id) || orderedSegments.length >= SUBSTANTIVE_TURN_COUNT
+  //
+  // Counting participant turns only, not all segments: Urushi's own replies are
+  // stored as segments too, so counting everything meant its opening plus two
+  // answers was most of the budget. The room would get roughly three exchanges
+  // to describe the problem before the mediator went quiet on them — which is
+  // precisely backwards, since that early stretch is when people are still
+  // working out what they are even arguing about.
+  const participantTurns = orderedSegments.filter((s) => s.role === 'participant').length
+  const mediationStarted = Boolean(access.session.current_issue_id) || participantTurns >= SUBSTANTIVE_TURN_COUNT
 
   const decision = await decideIntervention({
     topic: access.session.topic,
@@ -121,6 +135,9 @@ export async function POST(
     secondsSinceLastIntervention,
     directlyAddressed: detectDirectAddress(content),
     mediationStarted,
+    speakersIdentified,
+    // Urushi speaks the room's language, in the room's register — see spokenLanguage.ts.
+    spokenLanguages: getRealtimeConfig().transcribeLanguages,
   })
 
   const { data: interventionRow, error: interventionError } = await db

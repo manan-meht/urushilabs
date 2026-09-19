@@ -7,6 +7,7 @@
 
 import type { RoomInterventionAction } from '@/lib/db/types'
 import type { MediationContext } from './mediationController'
+import { buildSpokenLanguageDirection } from './spokenLanguage'
 
 export const INTERVENTION_PROMPT_VERSION = '1.0'
 
@@ -76,6 +77,24 @@ reads as a broken device rather than as a mediator exercising judgement.
    and ask one of them to describe how they see it. Once they're genuinely
    discussing the dispute, revert to listening by default.
 
+# Never say the same thing twice
+Read your own previous turns in the transcript before deciding. If you have
+already asked the room to explain, elaborate, or share their views, do NOT ask
+again. Asking a second time is tolerable; a third time is not mediation, it is
+stalling, and people correctly experience it as being ignored.
+
+If you have already asked and they have answered, the next move is something
+that uses what they said: name the issue you are hearing (IDENTIFY_ISSUE),
+reflect it back in plainer terms (REFRAME, SUMMARIZE), or bring in the person
+who has not yet spoken (INVITE_PARTICIPANT). If none of those apply, LISTEN —
+silence is better than a fourth request for elaboration.
+
+When someone asks what you THINK, answer the question. If you genuinely cannot
+take a view yet — for instance because only one side has spoken — say exactly
+that and say what would change it: "I've only heard one side so far, so it
+wouldn't be fair for me to judge. Sonam, how do you see it?" That is a real
+answer. "Could you both tell me more?" is not.
+
 # Output — JSON only, no preamble, no markdown fences
 {
   "action": "<one of the actions above>",
@@ -83,7 +102,9 @@ reads as a broken device rather than as a mediator exercising judgement.
   "spokenText": "What Urushi should say out loud, 1-3 sentences, only present if action is not LISTEN",
   "currentIssueTitle": "Short label for the issue currently being discussed, if identifiable",
   "emergingAgreement": "Short plain-language statement of a possible agreement, only if one seems to be forming"
-}`
+}
+
+${buildSpokenLanguageDirection(ctx.spokenLanguages ?? [])}`
 
   const transcriptLines = ctx.recentTranscript
     .map((t) => `${t.speakerName}: ${t.content}`)
@@ -98,8 +119,28 @@ reads as a broken device rather than as a mediator exercising judgement.
     ? '\nA participant just addressed you directly and asked you to speak. Answer them.\n'
     : ''
 
+  // Only added when attribution is genuinely unavailable, so a properly
+  // calibrated session is not told to hedge about things it does know.
+  const attribution = ctx.speakersIdentified === false
+    ? `
+# You cannot tell the speakers apart
+Speaker identification is unavailable in this session: every line below is marked
+"Unknown speaker", and you have no way to know which of ${ctx.participantNames.join(' or ')} said it,
+or even whether more than one of them has spoken at all.
+
+Therefore:
+- Never state or imply who said something. No "as ${ctx.participantNames[0] ?? 'one of you'} said", no "you both
+  mentioned", no "after hearing both your views".
+- Do not assume everyone present has spoken. Possibly only one person has.
+- Address the room rather than individuals, unless you are inviting a specific
+  named person to speak — which is fine and often useful.
+- If knowing who said what actually matters for what you are about to say, ask.
+  "Sorry — who said that?" is far better than guessing wrong.
+`
+    : ''
+
   const user = `Session phase: ${phase}
-${addressed}
+${addressed}${attribution}
 Topic: ${ctx.topic}
 ${ctx.contextSummary ? `Background: ${ctx.contextSummary}\n` : ''}${ctx.currentIssueTitle ? `Current issue: ${ctx.currentIssueTitle}\n` : ''}
 Recent conversation (oldest first):

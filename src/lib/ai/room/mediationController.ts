@@ -62,6 +62,27 @@ export interface MediationContext {
    * toward starting — rather than silently waiting for a conflict to appear.
    */
   mediationStarted?: boolean
+  /**
+   * Whether utterances can be attributed to named participants at all.
+   *
+   * False whenever speaker labels are unavailable — which is the normal case on
+   * an organisation without access to a diarization-capable transcription model.
+   * The room then arrives as one undifferentiated voice, and every turn reads as
+   * "Unknown speaker".
+   *
+   * This must reach the prompt. Left unsaid, the model fills the gap with the
+   * plausible assumption that everyone present has been talking: observed live,
+   * Urushi told a participant "after hearing both your views" when only one
+   * person had ever spoken. A mediator that misreports who said what loses the
+   * room's trust faster than one that admits it cannot tell.
+   */
+  speakersIdentified?: boolean
+  /**
+   * ISO-639-1 codes for the languages spoken in the room, from the session's
+   * transcription config. Decides the register Urushi speaks in — see
+   * spokenLanguage.ts. Empty or English-only means no special direction.
+   */
+  spokenLanguages?: string[]
 }
 
 export async function decideIntervention(ctx: MediationContext): Promise<InterventionDecision> {

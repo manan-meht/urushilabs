@@ -96,6 +96,20 @@ describe('detectDirectAddress', () => {
       }
     })
 
+    it('handles "aapko kya lagta hai", in either script', () => {
+      // Missed in the original patterns and found live: a participant asked
+      // "उरुशी, आपको क्या लगता है?" — the most natural way to put it — and was
+      // refused on cooldown, because only the आप क्या कहते/सोचते shapes existed.
+      for (const text of [
+        'उरुशी, आपको क्या लगता है?',
+        'Urushi, aapko kya lagta hai?',
+        'उरुशी, आपका क्या कहना है?',
+        'Urushi, aapko kya lagti hai baat?',
+      ]) {
+        expect(detectDirectAddress(text), text).toBe(true)
+      }
+    })
+
     it('recognises the name through its known mis-transcription', () => {
       // Observed live: "Urushi क्या बोल रहा है?" came back as "पुरुषों क्या बोल
       // रहा है?". Instructing the transcriber not to do this, by name, did not

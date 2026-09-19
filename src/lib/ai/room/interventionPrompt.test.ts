@@ -45,3 +45,26 @@ describe('buildInterventionPrompt', () => {
     expect(user).toContain('They run a business together.')
   })
 })
+
+describe('speaker attribution', () => {
+  it('warns the model when it cannot tell the speakers apart', () => {
+    // Observed live: with no diarization every turn reads "Unknown speaker", and
+    // the model filled the gap by assuming everyone present had spoken — telling
+    // a participant "after hearing both your views" when only one had.
+    const { user } = buildInterventionPrompt({ ...baseCtx, speakersIdentified: false })
+    expect(user).toContain('cannot tell the speakers apart')
+    expect(user).toContain('after hearing both your views')
+    expect(user).toContain('Do not assume everyone present has spoken')
+  })
+
+  it('says nothing about attribution when speakers are identified', () => {
+    // A calibrated session knows who said what; hedging there would be worse.
+    const { user } = buildInterventionPrompt({ ...baseCtx, speakersIdentified: true })
+    expect(user).not.toContain('cannot tell the speakers apart')
+  })
+
+  it('stays silent when the caller has not said either way', () => {
+    const { user } = buildInterventionPrompt(baseCtx)
+    expect(user).not.toContain('cannot tell the speakers apart')
+  })
+})

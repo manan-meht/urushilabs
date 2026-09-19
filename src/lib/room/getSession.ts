@@ -78,35 +78,68 @@ export async function requireRoomSessionByDeviceToken(
   token: string,
   sessionId: string
 ): Promise<RoomSessionAccess | { error: string; status: number }> {
-  if (!token) return { error: 'Unauthorized.', status: 401 }
+  const device = await resolveDeviceByToken(token)
+  if (!device) return { error: 'Unauthorized.', status: 401 }
+
+  // A device token grants access to exactly the session it is currently assigned
+  // to, and nothing else. An idle device (session_id NULL) authenticates nothing.
+  if (!device.sessionId || device.sessionId !== sessionId) return { error: 'Unauthorized.', status: 401 }
 
   const db = getServiceClient()
-  const tokenHash = hashToken(token)
-
-  const { data: device } = await db
-    .from('room_devices')
-    .select('id, session_id, revoked_at, cases!inner(id, user_id)')
-    .eq('device_token_hash', tokenHash)
-    .is('revoked_at', null)
-    .single()
-
-  if (!device || device.session_id !== sessionId) return { error: 'Unauthorized.', status: 401 }
-
   const { data: session } = await db
     .from('room_sessions')
-    .select('*')
+    .select('*, cases!room_sessions_case_id_fkey!inner(id, user_id)')
     .eq('id', sessionId)
     .single()
 
   if (!session) return { error: 'Session not found.', status: 404 }
 
-  // Best-effort freshness tracking for the owner's device list — never blocks the request.
-  void db.from('room_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', device.id)
-
-  type D = typeof device & { cases: { id: string; user_id: string } }
-  const caseRow = (device as D).cases
+  type S = typeof session & { cases: { id: string; user_id: string } }
+  const caseRow = (session as S).cases
 
   return { session: session as DbRoomSession, caseId: caseRow.id, userId: caseRow.user_id }
+}
+
+export interface ResolvedDevice {
+  id: string
+  userId: string
+  sessionId: string | null
+}
+
+/**
+ * Resolves a device bearer token to the device itself, independent of any
+ * session. Needed because a persistent device spends most of its life idle —
+ * polling for an assignment it does not have yet — and must still be able to
+ * authenticate to ask (see GET /api/room/device/assignment).
+ *
+ * Touches last_seen_at on every call, which is what makes the owner's ready
+ * screen able to show a device as online without the device doing anything else.
+ */
+export async function resolveDeviceByToken(token: string): Promise<ResolvedDevice | null> {
+  if (!token) return null
+
+  const db = getServiceClient()
+  const { data: device } = await db
+    .from('room_devices')
+    .select('id, user_id, session_id')
+    .eq('device_token_hash', hashToken(token))
+    .is('revoked_at', null)
+    .single()
+
+  if (!device) return null
+
+  // Best-effort freshness tracking — never blocks the request.
+  void db.from('room_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', device.id)
+
+  return { id: device.id, userId: device.user_id, sessionId: device.session_id }
+}
+
+/** Extracts a Bearer token from the request, or null if absent. */
+export function bearerToken(req: NextRequest): string | null {
+  const header = req.headers.get('authorization')
+  if (!header?.startsWith('Bearer ')) return null
+  const token = header.slice('Bearer '.length).trim()
+  return token || null
 }
 
 /**
@@ -121,10 +154,8 @@ export async function requireRoomSessionAccess(
   req: NextRequest,
   sessionId: string
 ): Promise<RoomSessionAccess | { error: string; status: number }> {
-  const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    return requireRoomSessionByDeviceToken(authHeader.slice('Bearer '.length).trim(), sessionId)
-  }
+  const token = bearerToken(req)
+  if (token) return requireRoomSessionByDeviceToken(token, sessionId)
   return requireRoomSessionById(sessionId)
 }
 
