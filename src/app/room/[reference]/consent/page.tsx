@@ -4,6 +4,7 @@ import { getUser } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
 import { SiteHeader, SiteFooter } from '@/components/SiteHeader'
 import { RoomConsentChecklist } from './RoomConsentChecklist'
+import { conversationSettingsFromRow } from '@/lib/conversation/settings'
 
 export const metadata: Metadata = {
   title: 'Before you begin — Urushi Labs',
@@ -23,7 +24,7 @@ export default async function RoomConsentPage({
   const db = getServiceClient()
   const { data: caseRow } = await db
     .from('cases')
-    .select('id, user_id, conversation_mode')
+    .select('id, user_id, conversation_mode, conversation_language, mediator_personality, allow_profanity, text_script, conversation_settings_version')
     .eq('public_reference', reference)
     .eq('conversation_mode', 'room')
     .single()
@@ -53,6 +54,8 @@ export default async function RoomConsentPage({
       <SiteHeader userEmail={user.email} logoHref="/" />
       <main className="flex-grow">
         <RoomConsentChecklist
+          caseId={caseRow.id}
+          settings={conversationSettingsFromRow(caseRow)}
           sessionId={session.id}
           caseReference={reference}
           participantNames={(participants ?? []).map((p) => p.name)}

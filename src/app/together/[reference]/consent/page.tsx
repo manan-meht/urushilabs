@@ -5,6 +5,7 @@ import { getServiceClient } from '@/lib/db/client'
 import { getParticipantSession } from '@/lib/auth/togetherParticipantSession'
 import { SiteHeader, SiteFooter } from '@/components/SiteHeader'
 import { ConsentChecklist } from './ConsentChecklist'
+import { conversationSettingsFromRow } from '@/lib/conversation/settings'
 
 export const metadata: Metadata = {
   title: 'Before you begin — Urushi Labs',
@@ -30,7 +31,7 @@ export default async function ConsentPage({
   const db = getServiceClient()
   const { data: caseRow } = await db
     .from('cases')
-    .select('id, user_id, conversation_mode')
+    .select('id, user_id, conversation_mode, conversation_language, mediator_personality, allow_profanity, text_script, conversation_settings_version')
     .eq('public_reference', reference)
     .eq('conversation_mode', 'together')
     .single()
@@ -39,7 +40,7 @@ export default async function ConsentPage({
 
   const { data: session } = await db
     .from('together_sessions')
-    .select('id, stage, person_a_name, person_b_name, topic')
+    .select('id, stage, person_a_name, person_b_name, topic, device_mode')
     .eq('case_id', caseRow.id)
     .single()
 
@@ -55,6 +56,9 @@ export default async function ConsentPage({
       <SiteHeader userEmail={user.email} logoHref="/" />
       <main className="flex-grow">
         <ConsentChecklist
+          caseId={caseRow.id}
+          settings={conversationSettingsFromRow(caseRow)}
+          sharedDevice={session.device_mode !== 'separate'}
           sessionId={session.id}
           caseReference={reference}
           personAName={session.person_a_name}

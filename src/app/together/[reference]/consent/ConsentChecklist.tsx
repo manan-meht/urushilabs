@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ConversationSettingsReview } from '@/components/ConversationSettingsReview'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 const CONSENT_ITEMS = [
   'We are both choosing to participate.',
@@ -14,6 +16,10 @@ const CONSENT_ITEMS = [
 const SAFETY_ITEM = 'Neither person feels physically unsafe participating in this conversation.' as const
 
 interface Props {
+  caseId: string
+  settings: ConversationSettings
+  /** One phone between them, so a single confirmation covers both. */
+  sharedDevice: boolean
   sessionId: string
   caseReference: string
   personAName: string
@@ -21,9 +27,10 @@ interface Props {
   topic: string
 }
 
-export function ConsentChecklist({ sessionId, caseReference, personAName, personBName, topic }: Props) {
+export function ConsentChecklist({ caseId, settings, sharedDevice, sessionId, caseReference, personAName, personBName, topic }: Props) {
   const router = useRouter()
   const [checked, setChecked] = useState<Set<number>>(new Set())
+  const [acceptProfanity, setAcceptProfanity] = useState(false)
   const [safetyChecked, setSafetyChecked] = useState(false)
   const [safetyDeclined, setSafetyDeclined] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -53,6 +60,18 @@ export function ConsentChecklist({ sessionId, caseReference, personAName, person
     setLoading(true)
     setError('')
     try {
+      // Person A's acceptance. On one shared phone this covers both of them; on
+      // separate devices person B answers for themselves when they join.
+      const accepted = await fetch(`/api/conversation/${caseId}/settings/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settingsVersion: settings.version, acceptProfanity, decline: false }),
+      })
+      if (!accepted.ok) {
+        setError('Could not record agreement to the conversation settings. Please try again.')
+        return
+      }
+
       const res = await fetch(`/api/together/sessions/${sessionId}/consent`, { method: 'POST' })
       if (!res.ok) {
         const data = await res.json() as { error?: string }
@@ -88,6 +107,16 @@ export function ConsentChecklist({ sessionId, caseReference, personAName, person
       </div>
 
       {/* Consent items */}
+      <div className="bg-surface-container-low rounded-xl p-4 mb-6 border border-outline-variant/40">
+        <p className="font-label-sm text-outline uppercase tracking-widest mb-2">How Urushi will mediate</p>
+        <ConversationSettingsReview
+          settings={settings}
+          sharedDevice={sharedDevice}
+          acceptProfanity={acceptProfanity}
+          onAcceptProfanityChange={setAcceptProfanity}
+        />
+      </div>
+
       <div className="space-y-3 mb-6">
         {CONSENT_ITEMS.map((item, i) => (
           <label

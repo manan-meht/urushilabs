@@ -20,14 +20,8 @@
  */
 
 import { useState } from 'react'
-import {
-  CONVERSATION_LANGUAGE_LABELS,
-  MEDIATOR_PERSONALITY_DESCRIPTIONS,
-  MEDIATOR_PERSONALITY_ICONS,
-  MEDIATOR_PERSONALITY_LABELS,
-  type ConversationSettings,
-} from '@/lib/conversation/settings'
-import { getStylePreview, PREVIEW_SCENARIO } from '@/lib/conversation/previews'
+import type { ConversationSettings } from '@/lib/conversation/settings'
+import { ConversationSettingsReview } from './ConversationSettingsReview'
 
 interface Props {
   caseId: string
@@ -53,7 +47,6 @@ export function ConversationSettingsAgreement({
 }: Props) {
   // Defaults to false: profanity is opted INTO, never out of.
   const [acceptProfanity, setAcceptProfanity] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -101,69 +94,12 @@ export function ConversationSettingsAgreement({
           : 'Urushi will mediate using these settings. They apply to everyone in the conversation.'}
       </p>
 
-      <dl className="space-y-3 mb-4">
-        <div className="flex items-start gap-3">
-          <span className="material-symbols-outlined text-[20px] text-outline mt-0.5">translate</span>
-          <div>
-            <dt className="font-label-sm text-outline uppercase tracking-widest">Language</dt>
-            <dd className="font-body-md text-on-surface">{CONVERSATION_LANGUAGE_LABELS[settings.language]}</dd>
-          </div>
-        </div>
-        <div className="flex items-start gap-3">
-          <span
-            className="material-symbols-outlined text-[20px] text-outline mt-0.5"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            {MEDIATOR_PERSONALITY_ICONS[settings.personality]}
-          </span>
-          <div>
-            <dt className="font-label-sm text-outline uppercase tracking-widest">Style</dt>
-            <dd className="font-body-md text-on-surface">{MEDIATOR_PERSONALITY_LABELS[settings.personality]}</dd>
-            <dd className="font-label-sm text-on-surface-variant text-[12px] leading-snug mt-0.5">
-              {MEDIATOR_PERSONALITY_DESCRIPTIONS[settings.personality]}
-            </dd>
-          </div>
-        </div>
-      </dl>
-
-      <button
-        type="button"
-        onClick={() => setShowPreview((v) => !v)}
-        aria-expanded={showPreview}
-        className="flex items-center gap-1 font-label-sm text-primary hover:underline focus:outline-none focus:underline mb-4"
-      >
-        <span className="material-symbols-outlined text-[16px]">{showPreview ? 'expand_less' : 'play_circle'}</span>
-        {showPreview ? 'Hide example' : 'See an example'}
-      </button>
-
-      {showPreview && (
-        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 mb-4">
-          <p className="font-label-sm text-outline mb-2">{PREVIEW_SCENARIO[settings.language]}</p>
-          <p className="font-body-md text-on-surface italic leading-snug">
-            &ldquo;{getStylePreview(settings.personality, settings.language, settings.allowProfanity)}&rdquo;
-          </p>
-        </div>
-      )}
-
-      {settings.allowProfanity && (
-        <label className="flex items-start gap-3 p-4 rounded-xl border border-outline-variant bg-surface-container-lowest cursor-pointer transition-all hover:border-primary/30 mb-4">
-          <input
-            type="checkbox"
-            checked={acceptProfanity}
-            onChange={(e) => setAcceptProfanity(e.target.checked)}
-            className="mt-0.5 w-5 h-5 rounded accent-[#4a654e] shrink-0"
-          />
-          <span>
-            <span className="font-body-md text-on-surface block">
-              {sharedDevice ? 'Everyone here agrees to strong language' : 'I agree to strong language'}
-            </span>
-            <span className="font-label-sm text-on-surface-variant text-[12px] leading-snug">
-              Urushi may swear for emphasis. No personal abuse. This is optional — you can continue without it, and it
-              stays off unless everyone agrees.
-            </span>
-          </span>
-        </label>
-      )}
+      <ConversationSettingsReview
+        settings={settings}
+        sharedDevice={sharedDevice}
+        acceptProfanity={acceptProfanity}
+        onAcceptProfanityChange={setAcceptProfanity}
+      />
 
       {sharedDevice && presentNames.length > 0 && (
         <p className="font-label-sm text-on-surface-variant text-[12px] leading-snug mb-4">

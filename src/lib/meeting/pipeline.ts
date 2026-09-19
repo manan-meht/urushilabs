@@ -33,7 +33,7 @@ import {
 } from '@/lib/ai/meeting/overrideCommands'
 import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import {
-  agentSettingsFromRow,
+  meetingOnlyAgentSettingsFromRow,
   withConversationSettings,
   type InterventionReason,
   type MeetingAgentSettings,
@@ -227,7 +227,7 @@ async function runMediationController(
   // often to interrupt.
   const conversationSettings = await getEffectiveSettings(session.case_id as string)
   const settings = withConversationSettings(
-    agentSettingsFromRow(session as unknown as Record<string, unknown>),
+    meetingOnlyAgentSettingsFromRow(session as unknown as Record<string, unknown>),
     conversationSettings,
   )
 
@@ -504,7 +504,7 @@ export async function speakInMeeting(
   if (!provider.isConfigured() || !session.provider_bot_id) return
 
   const resolved = settings ?? withConversationSettings(
-    agentSettingsFromRow(session as unknown as Record<string, unknown>),
+    meetingOnlyAgentSettingsFromRow(session as unknown as Record<string, unknown>),
     await getEffectiveSettings(session.case_id as string),
   )
   const voiceProfile = getVoiceProfile(resolved)

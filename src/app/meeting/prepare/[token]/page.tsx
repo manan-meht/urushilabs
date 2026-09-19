@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { SiteHeader, SiteFooter } from '@/components/SiteHeader'
 import { requireMeetingParticipantByToken, isAccessError } from '@/lib/meeting/getSession'
 import { MeetingPrepareView } from './MeetingPrepareView'
+import { getServiceClient } from '@/lib/db/client'
+import { conversationSettingsFromRow } from '@/lib/conversation/settings'
 
 export const metadata: Metadata = {
   title: 'Prepare for your conversation — Urushi Labs',
@@ -16,6 +18,18 @@ export default async function MeetingPreparePage({
   const { token } = await params
 
   const access = await requireMeetingParticipantByToken(token)
+
+  // Loaded here rather than in the view so an unauthenticated participant —
+  // who only ever holds a link — still sees what they are agreeing to.
+  let settings = null
+  if (!isAccessError(access)) {
+    const { data: caseRow } = await getServiceClient()
+      .from('cases')
+      .select('conversation_language, mediator_personality, allow_profanity, text_script, conversation_settings_version')
+      .eq('id', access.session.case_id)
+      .maybeSingle()
+    settings = conversationSettingsFromRow(caseRow)
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -34,6 +48,8 @@ export default async function MeetingPreparePage({
             contextSummary={access.session.context_summary}
             alreadyConsented={Boolean(access.participant.consented_at)}
             alreadySubmittedContext={Boolean(access.participant.context_submitted_at)}
+            caseId={access.session.case_id}
+            settings={settings!}
           />
         )}
       </main>

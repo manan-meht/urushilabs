@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectMeetingPlatform, CreateMeetingSessionSchema, UpdateMeetingDetailsSchema, MeetingConsentSchema } from './schemas'
+import { detectMeetingPlatform, CreateMeetingSessionSchema, MeetingAgentSettingsSchema, UpdateMeetingDetailsSchema, MeetingConsentSchema } from './schemas'
 
 describe('detectMeetingPlatform', () => {
   it('detects Google Meet links', () => {
@@ -60,6 +60,37 @@ describe('CreateMeetingSessionSchema', () => {
       topic: 'How responsibilities are divided',
     })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('MeetingAgentSettingsSchema', () => {
+  it('accepts the three meeting-owned axes', () => {
+    const result = MeetingAgentSettingsSchema.safeParse({
+      voiceGender: 'male',
+      region: 'indian',
+      interventionLevel: 'chair',
+    })
+    expect(result.success).toBe(true)
+    expect(result.success && result.data).toEqual({
+      voiceGender: 'male',
+      region: 'indian',
+      interventionLevel: 'chair',
+    })
+  })
+
+  it('strips personality, language and languageStyle from a stale client', () => {
+    // These are agreed once for the whole conversation and arrive as
+    // `conversationSettings`. Accepting them here too is what let a meeting run
+    // as one personality and be written up as another — an old client is not an
+    // error, but its meeting-side copy must not survive parsing.
+    const result = MeetingAgentSettingsSchema.safeParse({
+      personality: 'straight_shooter',
+      language: 'hindi',
+      languageStyle: 'unfiltered',
+      region: 'indian',
+    })
+    expect(result.success).toBe(true)
+    expect(result.success && result.data).toEqual({ region: 'indian' })
   })
 })
 

@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ConversationSettingsReview } from '@/components/ConversationSettingsReview'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 const CONSENT_ITEMS = [
   'I am participating voluntarily.',
@@ -11,15 +13,21 @@ const CONSENT_ITEMS = [
 ] as const
 
 interface Props {
+  caseId: string
+  settings: ConversationSettings
   sessionId: string
   caseReference: string
   participantNames: string[]
   topic: string
 }
 
-export function RoomConsentChecklist({ sessionId, caseReference, participantNames, topic }: Props) {
+export function RoomConsentChecklist({ caseId, settings, sessionId, caseReference, participantNames, topic }: Props) {
   const router = useRouter()
   const [checked, setChecked] = useState<Set<number>>(new Set())
+  // Separate from the consent items on purpose: agreeing to the style is not
+  // agreeing to be sworn at, and a single checkbox covering both would be the
+  // exact dark pattern this feature exists to avoid.
+  const [acceptProfanity, setAcceptProfanity] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -37,6 +45,24 @@ export function RoomConsentChecklist({ sessionId, caseReference, participantName
     setLoading(true)
     setError('')
     try {
+      // Everyone is around one device, so this single confirmation is the room's
+      // acceptance of the mediator settings. Recorded before consent so a failure
+      // here stops the flow rather than starting a session nobody agreed the
+      // terms of.
+      const accepted = await fetch(`/api/conversation/${caseId}/settings/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settingsVersion: settings.version,
+          acceptProfanity,
+          decline: false,
+        }),
+      })
+      if (!accepted.ok) {
+        setError('Could not record agreement to the conversation settings. Please try again.')
+        return
+      }
+
       const res = await fetch(`/api/room/sessions/${sessionId}/consent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,6 +101,16 @@ export function RoomConsentChecklist({ sessionId, caseReference, participantName
       <div className="bg-surface-container-low rounded-xl p-4 mb-6 border border-outline-variant/40">
         <p className="font-label-sm text-outline uppercase tracking-widest mb-1">Topic</p>
         <p className="font-body-md text-on-surface">{topic}</p>
+      </div>
+
+      <div className="bg-surface-container-low rounded-xl p-4 mb-6 border border-outline-variant/40">
+        <p className="font-label-sm text-outline uppercase tracking-widest mb-2">How Urushi will mediate</p>
+        <ConversationSettingsReview
+          settings={settings}
+          sharedDevice
+          acceptProfanity={acceptProfanity}
+          onAcceptProfanityChange={setAcceptProfanity}
+        />
       </div>
 
       <div className="space-y-3 mb-6">

@@ -1,8 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { ConversationSettingsReview } from '@/components/ConversationSettingsReview'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 interface Props {
+  caseId: string
+  settings: ConversationSettings
   token: string
   participantName: string
   topic: string
@@ -17,9 +21,10 @@ const CONSENT_ITEMS = [
   'I am participating voluntarily.',
 ] as const
 
-export function MeetingPrepareView({ token, participantName, topic, contextSummary, alreadyConsented, alreadySubmittedContext }: Props) {
+export function MeetingPrepareView({ caseId, settings, token, participantName, topic, contextSummary, alreadyConsented, alreadySubmittedContext }: Props) {
   const [checked, setChecked] = useState<Set<number>>(new Set(alreadyConsented ? [0, 1, 2] : []))
   const [consented, setConsented] = useState(alreadyConsented)
+  const [acceptProfanity, setAcceptProfanity] = useState(false)
   const [perspective, setPerspective] = useState('')
   const [contextSubmitted, setContextSubmitted] = useState(alreadySubmittedContext)
   const [loadingConsent, setLoadingConsent] = useState(false)
@@ -40,6 +45,18 @@ export function MeetingPrepareView({ token, participantName, topic, contextSumma
     setLoadingConsent(true)
     setError('')
     try {
+      // This participant's own acceptance, authenticated by the same link token
+      // that authenticates their consent — they have no account to sign in with.
+      const accepted = await fetch(`/api/conversation/${caseId}/settings/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-participant-token': token },
+        body: JSON.stringify({ settingsVersion: settings.version, acceptProfanity, decline: false }),
+      })
+      if (!accepted.ok) {
+        setError('Could not record agreement to the conversation settings. Please try again.')
+        return
+      }
+
       const res = await fetch(`/api/meeting/participants/token/${token}/consent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,6 +131,14 @@ export function MeetingPrepareView({ token, participantName, topic, contextSumma
       {!consented ? (
         <section>
           <p className="font-label-md text-on-surface-variant mb-3">Before you continue</p>
+          <div className="bg-surface-container-low rounded-xl p-4 mb-6 border border-outline-variant/40">
+            <p className="font-label-sm text-outline uppercase tracking-widest mb-2">How Urushi will mediate</p>
+            <ConversationSettingsReview
+              settings={settings}
+              acceptProfanity={acceptProfanity}
+              onAcceptProfanityChange={setAcceptProfanity}
+            />
+          </div>
           <div className="space-y-3 mb-6">
             {CONSENT_ITEMS.map((item, i) => (
               <label
