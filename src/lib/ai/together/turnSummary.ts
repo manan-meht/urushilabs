@@ -4,6 +4,8 @@
  */
 
 import { getEnv } from '@/lib/env'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 export interface TurnSummaryContext {
   speakerName: string
@@ -12,6 +14,11 @@ export interface TurnSummaryContext {
   roundNumber: number
   messages: Array<{ content: string; isVoice: boolean }>
   previousSummaries?: Array<{ speaker: string; summary: string; round: number }>
+  /**
+   * Optional so that callers with no case to read settings from keep the
+   * pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }
 
 export interface TurnSummaryResult {
@@ -41,7 +48,12 @@ export async function generateTurnSummary(ctx: TurnSummaryContext): Promise<Turn
     `Message ${i + 1}${m.isVoice ? ' (voice recording)' : ''}: ${m.content}`
   ).join('\n\n')
 
-  const system = `You are a neutral conflict-resolution facilitator summarising what one participant said during their turn in a joint mediation session.
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''
+
+  const system = `${persona}You are a neutral conflict-resolution facilitator summarising what one participant said during their turn in a joint mediation session.
 
 # Your task
 Create a concise, neutral summary of ${ctx.speakerName}'s turn (round ${ctx.roundNumber}).
@@ -64,7 +76,7 @@ The summary must capture:
 - Length: 100–200 words
 - Plain prose, no bullet points, no headers
 
-Return only the summary text. No preamble, no JSON wrapper.`
+Return only the summary text. No preamble, no JSON wrapper.${languageReminder ? `\n\n${languageReminder}` : ''}`
 
   const user = `Conversation topic: ${ctx.topic}${previousContext}
 

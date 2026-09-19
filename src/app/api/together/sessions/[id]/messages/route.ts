@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/db/client'
 import { TogetherMessageSchema } from '@/lib/validation/schemas'
 import { reviewMessage } from '@/lib/ai/together/reviewMessage'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import { verifyTogetherAccess } from '@/lib/together/verifyAccess'
 
 const SHARING_STAGES = new Set([
@@ -57,6 +58,8 @@ export async function POST(
   const speakerName = speaker === 'person_a' ? session.person_a_name : session.person_b_name
   const otherName = speaker === 'person_a' ? session.person_b_name : session.person_a_name
 
+  const settings = await getEffectiveSettings(session.case_id)
+
   // AI message review (non-blocking — graceful failure)
   let review = null
   try {
@@ -65,6 +68,7 @@ export async function POST(
       otherName,
       topic: session.topic,
       content,
+      settings,
     })
   } catch (err) {
     console.error('[together/messages] AI review failed, continuing without:', err)

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { getServiceClient } from '@/lib/db/client'
 import { generateIntakeSummary } from '@/lib/ai/intake'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 
 export async function POST(req: NextRequest) {
   const session = await getSession()
@@ -37,9 +38,13 @@ export async function POST(req: NextRequest) {
   const otherPartyName =
     session.role === 'initiator' ? caseRow.recipient_name : caseRow.initiator_name
 
+  // Intake is private and single-party, so nobody else's acceptance is
+  // outstanding — the default empty expectation list is correct here.
+  const settings = await getEffectiveSettings(session.caseId)
+
   try {
     const result = await generateIntakeSummary(
-      { participantName, role: session.role, topic: caseRow.topic, otherPartyName },
+      { participantName, role: session.role, topic: caseRow.topic, otherPartyName, settings },
       transcript
     )
 

@@ -6,6 +6,8 @@
 
 import { z } from 'zod'
 import { getEnv } from '@/lib/env'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 const AgreementSchema = z.object({
   title: z.string().min(1),
@@ -42,6 +44,11 @@ export interface SharedUnderstandingContext {
   topic: string
   personASummaries: Array<{ round: number; summary: string }>
   personBSummaries: Array<{ round: number; summary: string }>
+  /**
+   * Optional so that callers with no case to read settings from keep the
+   * pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }
 
 export interface SharedUnderstandingResult {
@@ -83,7 +90,12 @@ export async function generateSharedUnderstanding(
   const formatSummaries = (name: string, summaries: Array<{ round: number; summary: string }>) =>
     summaries.map(s => `Round ${s.round}:\n${s.summary}`).join('\n\n')
 
-  const system = `You are a neutral conflict-resolution facilitator. Both participants have shared their perspectives and approved their summaries. Your task is to generate a structured shared understanding.
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''
+
+  const system = `${persona}You are a neutral conflict-resolution facilitator. Both participants have shared their perspectives and approved their summaries. Your task is to generate a structured shared understanding.
 
 # Rules
 - Do NOT decide who is right
@@ -114,7 +126,7 @@ export async function generateSharedUnderstanding(
   }]
 }
 
-No preamble. No markdown fences. Return only the JSON object.`
+No preamble. No markdown fences. Return only the JSON object.${languageReminder ? `\n\n${languageReminder}` : ''}`
 
   const user = `Conversation topic: ${ctx.topic}
 

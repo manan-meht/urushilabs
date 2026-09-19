@@ -33,6 +33,7 @@ import {
   type InterventionStyle,
   type InterventionUrgency,
   type MeetingAgentSettings,
+  type MeetingPersonality,
 } from '@/lib/meeting/agentSettings'
 import {
   dominanceSignal,
@@ -126,6 +127,17 @@ export function preGate(ctx: EngineContext): PreGateResult {
 
 // ─── Stage A: should Urushi speak? ───────────────────────────────────────────
 
+/**
+ * One line each, not the full persona modules: Stage A only judges whether the
+ * floor is worth taking, and the personality shifts which reasons it leans
+ * toward. The wording itself comes from the persona prompt in Stage B.
+ */
+const PERSONALITY_SUMMARY: Record<MeetingPersonality, string> = {
+  diplomat: 'Diplomat — calm and constructive, surfaces misunderstandings and drives toward a way forward',
+  straight_shooter: 'Straight Shooter — blunt, calls out avoidance and contradiction',
+  deal_maker: 'Deal Maker — practical, pushes trade-offs toward a concrete, specific agreement',
+}
+
 function buildDecisionPrompt(ctx: EngineContext): { system: string; user: string } {
   const { settings } = ctx
 
@@ -137,7 +149,7 @@ Decide whether speaking RIGHT NOW would materially improve this conversation. Yo
 This is the hardest judgement in the product. Producing an intervention is easy; knowing when silence is better is the valuable part. Participants talking productively to each other is the desired state, not a gap to fill.
 
 # Urushi's configured role
-Personality: ${settings.personality === 'chair' ? 'Chair — drives structure and decisions' : 'Straight Shooter — blunt, calls out avoidance and contradiction'}
+Personality: ${PERSONALITY_SUMMARY[settings.personality]}
 Participation level: ${settings.interventionLevel}
 
 # Strong reasons to speak

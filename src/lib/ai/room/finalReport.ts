@@ -6,6 +6,8 @@
 
 import { z } from 'zod'
 import { getEnv } from '@/lib/env'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 import type { RoomFinalReport, SafetyCategory } from '@/lib/db/types'
 
 const FinalReportSchema = z.object({
@@ -37,6 +39,11 @@ export interface RoomFinalReportContext {
   issueResolutions: Array<{ title: string; status: string; resolution?: string }>
   confirmedAgreements: string[]
   transcriptExcerpt: Array<{ speakerName: string; content: string }>
+  /**
+   * Optional so that callers with no case to read settings from keep the
+   * pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }
 
 export interface RoomFinalReportResult {
@@ -77,7 +84,13 @@ export async function generateRoomFinalReport(ctx: RoomFinalReportContext): Prom
 
   const transcriptText = ctx.transcriptExcerpt.map((t) => `${t.speakerName}: ${t.content}`).join('\n')
 
-  const system = `You are a neutral conflict-resolution facilitator producing the final report after a live, in-person mediated conversation with ${ctx.participantNames.length} participants: ${ctx.participantNames.join(', ')}.
+  // The session itself was spoken, but the report is read — hence written: true.
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''
+
+  const system = `${persona}You are a neutral conflict-resolution facilitator producing the final report after a live, in-person mediated conversation with ${ctx.participantNames.length} participants: ${ctx.participantNames.join(', ')}.
 
 # Rules
 - Do NOT invent agreements that were not expressed or confirmed
@@ -99,7 +112,7 @@ export async function generateRoomFinalReport(ctx: RoomFinalReportContext): Prom
   "nextSteps": ["..."],
   "safetyCategory": "ordinary_conflict",
   "safetyNote": "..."
-}`
+}${languageReminder ? `\n\n${languageReminder}` : ''}`
 
   const user = `Topic: ${ctx.topic}
 ${ctx.contextSummary ? `Background: ${ctx.contextSummary}\n` : ''}

@@ -3,15 +3,23 @@
  * live Google Meet / Zoom conversation.
  *
  * Two axes are deliberately kept independent (spec §7): PERSONALITY is *how*
- * Urushi speaks, INTERVENTION LEVEL is *how often*. "Chair personality +
- * Chair-the-meeting level" is a valid, deliberately strong combination — the
- * tuning table below composes both rather than branching on a single enum.
+ * Urushi speaks, INTERVENTION LEVEL is *how often*. "Diplomat personality +
+ * Chair-the-meeting level" is a valid combination — the tuning table below
+ * composes both rather than branching on a single enum. Note the level named
+ * 'chair' is NOT a personality; the two enums share a word, nothing else.
  *
  * Everything here is pure data + pure functions so the intervention engine and
  * the prompt builder can be unit-tested without any I/O.
  */
 
-export type MeetingPersonality = 'chair' | 'straight_shooter'
+import { MEDIATOR_PERSONALITIES, type MediatorPersonality } from '@/lib/conversation/settings'
+
+/**
+ * Meetings use the product-wide personality set rather than their own, so the
+ * mediator a room configured is the same one it gets in its summary and report.
+ * Alias only — kept so meeting-side call sites keep reading in meeting terms.
+ */
+export type MeetingPersonality = MediatorPersonality
 export type VoiceGender = 'female' | 'male'
 export type VoiceRegion = 'american' | 'singaporean' | 'indian'
 export type AgentLanguage = 'english' | 'hindi' | 'hinglish' | 'auto'
@@ -33,7 +41,7 @@ export interface MeetingAgentSettings {
  * the user's name, email or locale.
  */
 export const DEFAULT_MEETING_AGENT_SETTINGS: MeetingAgentSettings = {
-  personality: 'chair',
+  personality: 'diplomat',
   voiceGender: 'female',
   region: 'american',
   language: 'auto',
@@ -41,7 +49,6 @@ export const DEFAULT_MEETING_AGENT_SETTINGS: MeetingAgentSettings = {
   languageStyle: 'direct',
 }
 
-const PERSONALITIES: readonly MeetingPersonality[] = ['chair', 'straight_shooter']
 const VOICE_GENDERS: readonly VoiceGender[] = ['female', 'male']
 const REGIONS: readonly VoiceRegion[] = ['american', 'singaporean', 'indian']
 const LANGUAGES: readonly AgentLanguage[] = ['english', 'hindi', 'hinglish', 'auto']
@@ -59,19 +66,53 @@ function pick<T extends string>(allowed: readonly T[], value: unknown, fallback:
  */
 export function normalizeAgentSettings(raw: Partial<Record<keyof MeetingAgentSettings, unknown>> | null | undefined): MeetingAgentSettings {
   const r = raw ?? {}
-  const personality = pick(PERSONALITIES, r.personality, DEFAULT_MEETING_AGENT_SETTINGS.personality)
+  const personality = pick(MEDIATOR_PERSONALITIES, r.personality, DEFAULT_MEETING_AGENT_SETTINGS.personality)
   return {
     personality,
     voiceGender: pick(VOICE_GENDERS, r.voiceGender, DEFAULT_MEETING_AGENT_SETTINGS.voiceGender),
     region: pick(REGIONS, r.region, DEFAULT_MEETING_AGENT_SETTINGS.region),
     language: pick(LANGUAGES, r.language, DEFAULT_MEETING_AGENT_SETTINGS.language),
     interventionLevel: pick(INTERVENTION_LEVELS, r.interventionLevel, DEFAULT_MEETING_AGENT_SETTINGS.interventionLevel),
-    // Chair never uses profanity — the control is hidden in the UI (spec §6) and
-    // forced here too so a hand-crafted API call can't route around it.
-    languageStyle: personality === 'chair'
+    // Only the Straight Shooter has a profanity control at all — the UI hides it
+    // for the others (spec §6), and it is forced here too so a hand-crafted API
+    // call can't route around a control the user never saw.
+    languageStyle: personality !== 'straight_shooter'
       ? 'clean'
       : pick(LANGUAGE_STYLES, r.languageStyle, DEFAULT_MEETING_AGENT_SETTINGS.languageStyle),
   }
+}
+
+/**
+ * Overlays the conversation's agreed settings onto a meeting's stored agent row.
+ *
+ * Personality, language and profanity are agreed ONCE for the whole conversation
+ * and live on `cases`; meeting_sessions keeps only the axes that are genuinely
+ * meeting-specific (voice gender, accent region, how often to interrupt).
+ *
+ * This exists because the two were briefly configurable in both places, which
+ * meant a meeting could run as the Straight Shooter live and be written up as
+ * the Diplomat — the exact competing-configuration problem the shared settings
+ * model was introduced to remove. The shared value always wins; the agent row is
+ * only consulted for what it alone knows.
+ */
+export function withConversationSettings(
+  agent: MeetingAgentSettings,
+  conversation: {
+    personality: MeetingPersonality
+    language: 'english' | 'hindi' | 'hinglish'
+    allowProfanity: boolean
+  }
+): MeetingAgentSettings {
+  return normalizeAgentSettings({
+    ...agent,
+    personality: conversation.personality,
+    language: conversation.language,
+    // The 3-tier meeting style collapses to the shared boolean. Off is off; on
+    // resolves to 'unfiltered', which is the tier that measurably produces the
+    // language a user turning this on is asking for — 'direct' kept reaching for
+    // a polite synonym in exactly the moment the setting exists for.
+    languageStyle: conversation.allowProfanity ? 'unfiltered' : 'clean',
+  })
 }
 
 /** Language selection only applies to the Indian region (spec §5). */
@@ -166,13 +207,19 @@ const LEVEL_TUNING: Record<InterventionLevel, InterventionTuning> = {
  * hard-escalation path.
  */
 const PERSONALITY_PRIORITY_REASONS: Record<MeetingPersonality, ReadonlySet<InterventionReason>> = {
-  chair: new Set<InterventionReason>([
+  diplomat: new Set<InterventionReason>([
     'AGENDA_DRIFT', 'DOMINATING_PARTICIPANT', 'DECISION_READY', 'NEXT_STEP_NEEDED', 'UNANSWERED_QUESTION',
     'VAGUENESS',
   ]),
   straight_shooter: new Set<InterventionReason>([
     'CONTRADICTION', 'CIRCULAR_DISCUSSION', 'UNANSWERED_QUESTION', 'FACT_VS_INTERPRETATION',
     'VAGUENESS', 'UNSUPPORTED_CLAIM',
+  ]),
+  // Everything that stands between the room and a concrete, specific agreement:
+  // a decision that is ripe, a resolution with no owner or date, agreement
+  // nobody has noticed, and wording too vague to hold anyone to.
+  deal_maker: new Set<InterventionReason>([
+    'DECISION_READY', 'NEXT_STEP_NEEDED', 'HIDDEN_AGREEMENT', 'VAGUENESS', 'UNANSWERED_QUESTION',
   ]),
 }
 

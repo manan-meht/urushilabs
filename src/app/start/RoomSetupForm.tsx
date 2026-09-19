@@ -2,6 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  ConversationStyleFields,
+  DEFAULT_CONVERSATION_STYLE_VALUE,
+  type ConversationStyleValue,
+} from './ConversationStyleFields'
 
 interface Props {
   userFirstName: string
@@ -16,6 +21,7 @@ export function RoomSetupForm({ userFirstName, roomsRemaining, existingCases }: 
   const [topic, setTopic] = useState('')
   const [contextSummary, setContextSummary] = useState('')
   const [sourceCaseReference, setSourceCaseReference] = useState('')
+  const [style, setStyle] = useState<ConversationStyleValue>(DEFAULT_CONVERSATION_STYLE_VALUE)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [serverError, setServerError] = useState('')
@@ -54,6 +60,12 @@ export function RoomSetupForm({ userFirstName, roomsRemaining, existingCases }: 
           topic,
           contextSummary: contextSummary || undefined,
           sourceCaseReference: sourceCaseReference || undefined,
+          conversationSettings: {
+            language: style.language,
+            personality: style.personality,
+            allowProfanity: style.allowProfanity,
+            textScript: style.textScript,
+          },
         }),
       })
 
@@ -165,6 +177,9 @@ export function RoomSetupForm({ userFirstName, roomsRemaining, existingCases }: 
             <p className="text-error text-label-md ml-1" role="alert">{errors['topic'][0]}</p>
           )}
         </div>
+
+        {/* Voice-only: nothing is written, so no script to choose. */}
+        <ConversationStyleFields value={style} onChange={setStyle} />
 
         {existingCases.length > 0 && (
           <div className="space-y-stack-sm">

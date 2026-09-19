@@ -5,6 +5,8 @@
 
 import { z } from 'zod'
 import { getEnv } from '@/lib/env'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 import type { SafetyCategory } from '@/lib/db/types'
 
 const AgreedItemSchema = z.object({
@@ -60,6 +62,11 @@ export interface FinalReportContext {
     personBPosition?: string
   }>
   allMessages: Array<{ speaker: string; content: string; round: number }>
+  /**
+   * Optional so that callers with no case to read settings from keep the
+   * pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }
 
 export interface FinalReportResult {
@@ -96,7 +103,12 @@ export async function generateFinalReport(ctx: FinalReportContext): Promise<Fina
     `Issue: ${i.title}\nStatus: ${i.status}${i.resolution ? `\nResolution: ${i.resolution}` : ''}${i.personAPosition ? `\n${ctx.personAName}'s position: ${i.personAPosition}` : ''}${i.personBPosition ? `\n${ctx.personBName}'s position: ${i.personBPosition}` : ''}`
   ).join('\n\n')
 
-  const system = `You are a neutral conflict-resolution facilitator producing the final report after a joint mediation session.
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''
+
+  const system = `${persona}You are a neutral conflict-resolution facilitator producing the final report after a joint mediation session.
 
 # Task
 Synthesise the session into a structured final report.
@@ -120,7 +132,7 @@ Synthesise the session into a structured final report.
   "safetyNote": "..."
 }
 
-No preamble. No markdown fences. Return only the JSON object.`
+No preamble. No markdown fences. Return only the JSON object.${languageReminder ? `\n\n${languageReminder}` : ''}`
 
   const user = `Conversation topic: ${ctx.topic}
 

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth/session'
 import { getServiceClient } from '@/lib/db/client'
 import { decryptSummaryFromDb } from '@/lib/crypto'
 import { generateInvitationBrief, INVITATION_BRIEF_VERSION } from '@/lib/ai/invitationBrief'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import type { DbSubmission } from '@/lib/db/types'
 
 interface RouteParams {
@@ -66,12 +67,15 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
 
   const initiatorSummaryJson = decryptSummaryFromDb(submission as DbSubmission)
 
+  const settings = await getEffectiveSettings(caseId)
+
   try {
     const brief = await generateInvitationBrief({
       initiatorName: caseRow.initiator_name,
       recipientName: caseRow.recipient_name,
       topic: caseRow.topic,
       initiatorSummaryJson,
+      settings,
     })
 
     // Store brief, clear any previous approval

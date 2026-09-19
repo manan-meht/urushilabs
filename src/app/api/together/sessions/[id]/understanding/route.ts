@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
 import { generateSharedUnderstanding } from '@/lib/ai/together/sharedUnderstanding'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import type { DbTogetherTurnSummary } from '@/lib/db/types'
 
 export async function POST(
@@ -64,6 +65,8 @@ export async function POST(
     return NextResponse.json({ error: 'Both participants must have approved summaries before generating shared understanding.' }, { status: 422 })
   }
 
+  const settings = await getEffectiveSettings(session.case_id)
+
   let result
   try {
     result = await generateSharedUnderstanding({
@@ -72,6 +75,7 @@ export async function POST(
       topic: session.topic,
       personASummaries: aSummaries,
       personBSummaries: bSummaries,
+      settings,
     })
   } catch (err) {
     console.error('[together/understanding] AI failed:', err)

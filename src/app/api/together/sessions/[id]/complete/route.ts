@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
 import { generateFinalReport } from '@/lib/ai/together/finalReport'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import type { DbTogetherTurnSummary, TogetherSharedUnderstanding } from '@/lib/db/types'
 
 export async function POST(
@@ -93,6 +94,8 @@ export async function POST(
     .order('created_at')
     .limit(50)
 
+  const settings = await getEffectiveSettings(session.case_id)
+
   let result
   try {
     result = await generateFinalReport({
@@ -110,6 +113,7 @@ export async function POST(
         content: m.display_content ?? m.content,
         round: m.round_number,
       })),
+      settings,
     })
   } catch (err) {
     console.error('[together/complete] Final report generation failed:', err)

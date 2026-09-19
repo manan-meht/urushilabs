@@ -64,17 +64,19 @@ const LANGUAGE_DELIVERY_INSTRUCTION: Partial<Record<AgentLanguage, string>> = {
 }
 
 /**
- * Delivery tone per personality. Chair is composed and authoritative; Straight
- * Shooter is faster and blunter. This is delivery only — wording comes from the
+ * Delivery tone per personality. This is delivery only — wording comes from the
  * system prompt.
  */
 const PERSONALITY_DELIVERY: Record<MeetingAgentSettings['personality'], string> = {
-  chair:
+  diplomat:
     'Tone: composed, confident and decisive — a senior chairperson running the room. ' +
     'Measured conversational pace. Never sound tentative, apologetic, subordinate or theatrical.',
   straight_shooter:
     'Tone: direct, brisk and grounded — someone who cuts to the point. ' +
     'Slightly faster pace with firm emphasis. Never sound cruel, sneering or mocking.',
+  deal_maker:
+    'Tone: practical, warm and businesslike — someone putting a workable proposal on the table. ' +
+    'Even pace, clear emphasis on the specifics. Never sound salesy, pushy or like a negotiation tactic.',
 }
 
 export function getVoiceProfile(settings: MeetingAgentSettings): VoiceProfile {

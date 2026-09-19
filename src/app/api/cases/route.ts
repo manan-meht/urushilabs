@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { CreateCaseSchema } from '@/lib/validation/schemas'
+import { ConversationSettingsSchema, CreateCaseSchema } from '@/lib/validation/schemas'
+import { conversationSettingsToRow, normalizeConversationSettings } from '@/lib/conversation/settings'
 import { getServiceClient } from '@/lib/db/client'
 import { generateSecureToken, hashToken, generatePublicReference, inviteExpiresAt } from '@/lib/tokens'
 import { setSessionCookie } from '@/lib/auth/session'
@@ -21,6 +22,17 @@ export async function POST(req: NextRequest) {
   }
 
   const { recipientName, relationship, topic, consentVersion } = parsed.data
+
+  // Parsed off the raw body rather than folded into CreateCaseSchema: the same
+  // block rides on all four create routes, each with its own mode schema.
+  const settingsParsed = ConversationSettingsSchema.safeParse(
+    (body as { conversationSettings?: unknown }).conversationSettings ?? {}
+  )
+  if (!settingsParsed.success) {
+    return NextResponse.json({ errors: settingsParsed.error.flatten().fieldErrors }, { status: 422 })
+  }
+  // The normalizer, not the client, decides what is stored.
+  const conversationSettings = normalizeConversationSettings(settingsParsed.data)
 
   try {
     const supabase = await createClient()
@@ -69,6 +81,7 @@ export async function POST(req: NextRequest) {
         invitation_token_hash: invitationTokenHash,
         invite_expires_at: expiresAt.toISOString(),
         user_id: user.id,
+        ...conversationSettingsToRow(conversationSettings),
       })
       .select('id, public_reference')
       .single()

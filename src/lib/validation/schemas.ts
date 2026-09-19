@@ -23,6 +23,54 @@ export const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
   other: 'Other',
 }
 
+// ─── Conversation settings (shared by every mode) ─────────────────────────────
+// The runtime types and normalizer live in src/lib/conversation/settings.ts; this
+// is the request-boundary schema. Both enforce the same profanity/personality
+// invariant, deliberately — a request that slips past one is still caught by the
+// other, and normalizeConversationSettings() remains the last word before any of
+// this reaches prompt construction.
+export const CONVERSATION_LANGUAGE_OPTIONS = ['english', 'hindi', 'hinglish'] as const
+export const MEDIATOR_PERSONALITY_OPTIONS = ['diplomat', 'straight_shooter', 'deal_maker'] as const
+export const TEXT_SCRIPT_OPTIONS = ['devanagari', 'roman'] as const
+
+export const ConversationSettingsSchema = z.object({
+  language: z.enum(CONVERSATION_LANGUAGE_OPTIONS).default('english'),
+  personality: z.enum(MEDIATOR_PERSONALITY_OPTIONS).default('diplomat'),
+  allowProfanity: z.boolean().default(false),
+  textScript: z.enum(TEXT_SCRIPT_OPTIONS).optional(),
+}).refine(
+  (v) => !v.allowProfanity || v.personality === 'straight_shooter',
+  { message: 'Strong language is only available with The Straight Shooter.', path: ['allowProfanity'] },
+)
+export type ConversationSettingsInput = z.infer<typeof ConversationSettingsSchema>
+
+/**
+ * Partial form, for changing one setting mid-conversation. Separate from
+ * ConversationSettingsSchema because that one carries a .refine() and is
+ * therefore a ZodEffects, which has no .partial(). The profanity invariant is
+ * re-checked here, and again in normalizeConversationSettings().
+ */
+export const ConversationSettingsPatchSchema = z.object({
+  language: z.enum(CONVERSATION_LANGUAGE_OPTIONS).optional(),
+  personality: z.enum(MEDIATOR_PERSONALITY_OPTIONS).optional(),
+  allowProfanity: z.boolean().optional(),
+  textScript: z.enum(TEXT_SCRIPT_OPTIONS).optional(),
+}).refine(
+  (v) => !v.allowProfanity || v.personality === undefined || v.personality === 'straight_shooter',
+  { message: 'Strong language is only available with The Straight Shooter.', path: ['allowProfanity'] },
+)
+export type ConversationSettingsPatchInput = z.infer<typeof ConversationSettingsPatchSchema>
+
+/** Accepting (or declining) a specific version of the proposed settings. */
+export const AcceptConversationSettingsSchema = z.object({
+  settingsVersion: z.number().int().positive(),
+  // Agreeing to the style is not agreeing to the swearing, so this is answered
+  // separately rather than folded into `accepted`.
+  acceptProfanity: z.boolean().default(false),
+  decline: z.boolean().default(false),
+})
+export type AcceptConversationSettingsInput = z.infer<typeof AcceptConversationSettingsSchema>
+
 // ─── Case creation ─────────────────────────────────────────────────────────────
 export const CreateCaseSchema = z.object({
   recipientName: z
@@ -204,7 +252,7 @@ export type MeetingParticipantInput = z.infer<typeof MeetingParticipantInputSche
  * omitted fields resolve to DEFAULT_MEETING_AGENT_SETTINGS server-side.
  */
 export const MeetingAgentSettingsSchema = z.object({
-  personality: z.enum(['chair', 'straight_shooter']).optional(),
+  personality: z.enum(['diplomat', 'straight_shooter', 'deal_maker']).optional(),
   voiceGender: z.enum(['female', 'male']).optional(),
   region: z.enum(['american', 'singaporean', 'indian']).optional(),
   language: z.enum(['english', 'hindi', 'hinglish', 'auto']).optional(),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/db/client'
 import { requireRoomSessionAccess, isAccessError } from '@/lib/room/getSession'
 import { generateRoomFinalReport } from '@/lib/ai/room/finalReport'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import { trackRoomEvent, ROOM_ANALYTICS_EVENTS } from '@/lib/analytics/roomEvents'
 import type { DbRoomParticipant, DbRoomTranscriptSegment } from '@/lib/db/types'
 
@@ -34,6 +35,8 @@ export async function POST(
   const participantList = (participants ?? []) as DbRoomParticipant[]
   const nameByParticipantId = new Map(participantList.map((p) => [p.id, p.name]))
 
+  const settings = await getEffectiveSettings(access.caseId)
+
   let result
   try {
     result = await generateRoomFinalReport({
@@ -47,6 +50,7 @@ export async function POST(
         speakerName: t.role === 'assistant' ? 'Urushi' : (t.participant_id && nameByParticipantId.get(t.participant_id)) || 'Participant',
         content: t.content,
       })),
+      settings,
     })
   } catch (err) {
     console.error('[room/complete] Final report generation failed:', err)

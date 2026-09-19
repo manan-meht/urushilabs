@@ -4,18 +4,19 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MeetingAgentSetup } from './MeetingAgentSetup'
 import {
+  ConversationStyleFields,
+  DEFAULT_CONVERSATION_STYLE_VALUE,
+  type ConversationStyleValue,
+} from './ConversationStyleFields'
+import {
   DEFAULT_MEETING_AGENT_SETTINGS,
   type MeetingAgentSettings,
 } from '@/lib/meeting/agentSettings'
+import { MEDIATOR_PERSONALITY_LABELS } from '@/lib/conversation/settings'
 
 interface ParticipantField {
   name: string
   email: string
-}
-
-const PERSONALITY_LABEL: Record<MeetingAgentSettings['personality'], string> = {
-  chair: 'Chair',
-  straight_shooter: 'Straight Shooter',
 }
 
 const INTERVENTION_LABEL: Record<MeetingAgentSettings['interventionLevel'], string> = {
@@ -54,6 +55,7 @@ export function MeetingSetupForm({ userFirstName, userEmail, roomsRemaining }: P
   ])
   const [topic, setTopic] = useState('')
   const [contextSummary, setContextSummary] = useState('')
+  const [style, setStyle] = useState<ConversationStyleValue>(DEFAULT_CONVERSATION_STYLE_VALUE)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [serverError, setServerError] = useState('')
@@ -98,6 +100,12 @@ export function MeetingSetupForm({ userFirstName, userEmail, roomsRemaining }: P
           topic,
           contextSummary: contextSummary || undefined,
           agentSettings,
+          conversationSettings: {
+            language: style.language,
+            personality: style.personality,
+            allowProfanity: style.allowProfanity,
+            textScript: style.textScript,
+          },
         }),
       })
 
@@ -193,7 +201,7 @@ export function MeetingSetupForm({ userFirstName, userEmail, roomsRemaining }: P
           <div>
             <p className="font-label-sm text-outline uppercase tracking-widest mb-1">Urushi</p>
             <p className="font-body-md text-on-surface">
-              {PERSONALITY_LABEL[agentSettings.personality]} · {INTERVENTION_LABEL[agentSettings.interventionLevel]}
+              {MEDIATOR_PERSONALITY_LABELS[agentSettings.personality]} · {INTERVENTION_LABEL[agentSettings.interventionLevel]}
             </p>
             <p className="font-label-sm text-on-surface-variant mt-0.5">
               {agentSettings.voiceGender === 'female' ? 'Female' : 'Male'} voice · {REGION_LABEL[agentSettings.region]}
@@ -323,6 +331,9 @@ export function MeetingSetupForm({ userFirstName, userEmail, roomsRemaining }: P
             <p className="text-error text-label-md ml-1" role="alert">{errors['topic'][0]}</p>
           )}
         </div>
+
+        {/* Voice-only: nothing is written, so no script to choose. */}
+        <ConversationStyleFields value={style} onChange={setStyle} />
 
         <div className="space-y-stack-sm">
           <label htmlFor="contextSummary" className="block font-label-md text-on-surface-variant ml-1">

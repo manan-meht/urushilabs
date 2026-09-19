@@ -8,6 +8,7 @@
 
 import { getServiceClient } from '@/lib/db/client'
 import { generateMeetingFinalReport } from '@/lib/ai/meeting/finalReport'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS, recordMeetingUsage } from '@/lib/analytics/meetingEvents'
 import type { DbMeetingParticipant, DbMeetingSession, DbMeetingTranscriptSegment, MeetingFinalReport } from '@/lib/db/types'
 
@@ -39,6 +40,8 @@ export async function completeMeetingSession(sessionId: string): Promise<Complet
 
   const participantList = (participants ?? []) as DbMeetingParticipant[]
 
+  const settings = await getEffectiveSettings(meetingSession.case_id)
+
   let result
   try {
     result = await generateMeetingFinalReport({
@@ -52,6 +55,7 @@ export async function completeMeetingSession(sessionId: string): Promise<Complet
         speakerName: t.speaker_name ?? (t.role === 'assistant' ? 'Urushi' : 'Participant'),
         content: t.content,
       })),
+      settings,
     })
   } catch (err) {
     console.error('[completeMeetingSession] Final report generation failed:', err)

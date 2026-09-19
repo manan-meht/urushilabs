@@ -4,6 +4,7 @@ import { getServiceClient } from '@/lib/db/client'
 import { encryptToDb } from '@/lib/crypto'
 import { IntakeMessageSchema } from '@/lib/validation/schemas'
 import { continueIntake } from '@/lib/ai/intake'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import { decryptFromDb } from '@/lib/crypto'
 import type { DbIntakeMessage } from '@/lib/db/types'
 
@@ -91,12 +92,16 @@ export async function POST(req: NextRequest) {
     const participantName =
       role === 'initiator' ? caseRow.initiator_name : caseRow.recipient_name
 
+    // Intake is private and single-party, so nobody else's acceptance is
+    // outstanding — the default empty expectation list is correct here.
+    const settings = await getEffectiveSettings(caseId)
+
     console.error('[intake/message] step: call OpenAI, key present=', !!process.env['OPENAI_API_KEY'])
     let aiResponse: string
     let inputTokens = 0, outputTokens = 0
     try {
       const result = await continueIntake(
-        { participantName, role, topic: caseRow.topic, otherPartyName },
+        { participantName, role, topic: caseRow.topic, otherPartyName, settings },
         [...history, { role: 'user', content }]
       )
       aiResponse = result.content

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
 import { generateTurnSummary } from '@/lib/ai/together/turnSummary'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import type { DbTogetherMessage, DbTogetherTurnSummary } from '@/lib/db/types'
 
 export async function POST(
@@ -77,6 +78,8 @@ export async function POST(
     db.from('together_turn_summaries').select('id, ai_summary').eq('session_id', id).eq('speaker', 'person_b').eq('round_number', round).maybeSingle(),
   ])
 
+  const settings = await getEffectiveSettings(session.case_id)
+
   let totalInputTokens = 0
   let totalOutputTokens = 0
 
@@ -99,6 +102,7 @@ export async function POST(
       roundNumber: round,
       messages: toMsgList(msgs),
       previousSummaries: prevSummaryContext,
+      settings,
     })
 
     totalInputTokens += result.inputTokens

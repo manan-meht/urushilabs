@@ -31,8 +31,10 @@ import {
   detectOverrideCommand,
   resolveOverride,
 } from '@/lib/ai/meeting/overrideCommands'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import {
   agentSettingsFromRow,
+  withConversationSettings,
   type InterventionReason,
   type MeetingAgentSettings,
 } from '@/lib/meeting/agentSettings'
@@ -220,7 +222,14 @@ async function runMediationController(
   latest: MeetingTranscriptEntry
 ): Promise<void> {
   const startedAt = Date.now()
-  const settings = agentSettingsFromRow(session as unknown as Record<string, unknown>)
+  // Personality/language/profanity are agreed for the whole conversation and
+  // stored on the case; the meeting row only supplies voice, region and how
+  // often to interrupt.
+  const conversationSettings = await getEffectiveSettings(session.case_id as string)
+  const settings = withConversationSettings(
+    agentSettingsFromRow(session as unknown as Record<string, unknown>),
+    conversationSettings,
+  )
 
   const { data: recentRows } = await db
     .from('meeting_transcript_segments')
@@ -494,7 +503,10 @@ export async function speakInMeeting(
   const provider = getMeetingBotProvider()
   if (!provider.isConfigured() || !session.provider_bot_id) return
 
-  const resolved = settings ?? agentSettingsFromRow(session as unknown as Record<string, unknown>)
+  const resolved = settings ?? withConversationSettings(
+    agentSettingsFromRow(session as unknown as Record<string, unknown>),
+    await getEffectiveSettings(session.case_id as string),
+  )
   const voiceProfile = getVoiceProfile(resolved)
 
   try {

@@ -4,6 +4,8 @@
  */
 
 import { z } from 'zod'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from './persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 export const INTAKE_PROMPT_VERSION = '2.0'
 
@@ -12,6 +14,11 @@ export interface IntakeContext {
   role: 'initiator' | 'recipient'
   topic: string
   otherPartyName: string
+  /**
+   * Optional so that callers with no case to read settings from — tests, and any
+   * entry point not yet wired — keep the pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }
 
 const SpecificIncidentSchema = z
@@ -76,7 +83,14 @@ export function buildIntakeOpeningMessage(ctx: IntakeContext): string {
 }
 
 export function buildIntakeSystemPrompt(ctx: IntakeContext): string {
-  return `# Identity
+  // Intake is a private, one-sided conversation, so the foundation's "only heard
+  // one side" rules are load-bearing here rather than background material.
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''
+
+  return `${persona}# Identity
 
 You are Urushi Intake, a compassionate and impartial conflict-intake assistant helping ${ctx.participantName} prepare their private perspective for a conflict-resolution process.
 
@@ -201,13 +215,22 @@ Do not ask whether they are ready for the summary.
 - No diagnosis or character judgement
 - Two to three sentences per conversational turn at most
 - Prefer concrete language over therapeutic jargon
-- Do not analyse ${ctx.otherPartyName} during intake`
+- Do not analyse ${ctx.otherPartyName} during intake${languageReminder ? `\n\n${languageReminder}` : ''}`
 }
 
 export function buildSummaryGenerationPrompt(
   ctx: IntakeContext,
   transcript: string
 ): string {
+  // Language only, deliberately not the full persona. The participant READS this
+  // summary, so it has to be in their language — but it is structured extraction,
+  // not a mediation turn, and a personality would only distort the record. The
+  // shared foundation's rules about not inventing facts are already restated in
+  // this prompt's own Rules section.
+  const summaryLanguage = ctx.settings && ctx.settings.language !== 'english'
+    ? `- Write all summary text in ${ctx.settings.language === 'hindi' ? 'Hindi' : 'Hinglish'}, matching how the participant spoke. JSON keys stay in English.`
+    : ''
+
   return `# Task
 
 Generate a structured private summary of ${ctx.participantName}'s intake conversation for their review and for use in a later shared conflict assessment.
@@ -277,5 +300,6 @@ Return one JSON object with exactly these keys:
 - Include no more than three specific incidents, selecting the incidents most relevant to the current conflict.
 - Use empty arrays when a category was not discussed. Never invent content merely to fill a field.
 - Keep each item concise but specific.
-- Return only the JSON object, with no markdown, preamble, or explanation.`
+- Return only the JSON object, with no markdown, preamble, or explanation.
+${summaryLanguage}`
 }

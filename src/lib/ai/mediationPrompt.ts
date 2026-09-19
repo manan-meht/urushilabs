@@ -4,6 +4,8 @@
  */
 
 import { z } from 'zod'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from './persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 import type { SafetyCategory } from '@/lib/db/types'
 
 export const MEDIATION_PROMPT_VERSION = '2.0'
@@ -162,10 +164,22 @@ export interface MediationContext {
   initiatorSummary: string
   /** JSON string produced from the intake summary or a legacy prose summary. */
   recipientSummary: string
+  /**
+   * Optional so that callers with no case to read settings from keep the
+   * pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }
 
-export function buildMediationSystemPrompt(): string {
-  return `# Identity
+export function buildMediationSystemPrompt(settings?: ConversationSettings): string {
+  // Optional: a caller without a case to read settings from keeps the original
+  // prompt byte for byte.
+  const persona = settings ? `${buildMediatorPersona(settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = settings ? buildPersonaLanguageReminder(settings) : ''
+
+  return `${persona}# Identity
 
 You are Urushi Resolution, an impartial conflict-resolution analyst.
 
@@ -448,7 +462,7 @@ Report section order to follow:
 
 Do not repeat the same observation in multiple sections unless the repetition is necessary to connect a finding to a specific action.
 
-No markdown, no preamble, no wrapper object, and no explanation outside the JSON.`
+No markdown, no preamble, no wrapper object, and no explanation outside the JSON.${languageReminder ? `\n\n${languageReminder}` : ''}`
 }
 
 export function buildMediationUserMessage(ctx: MediationContext): string {

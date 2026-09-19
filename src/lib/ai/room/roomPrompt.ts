@@ -5,18 +5,33 @@
  * see src/lib/ai/realtime/config.ts — the controller in mediationController.ts owns that).
  */
 
-export const ROOM_PROMPT_VERSION = '1.0'
+import type { ConversationSettings } from '@/lib/conversation/settings'
+import { buildMediatorPersona } from '@/lib/ai/persona'
+
+export const ROOM_PROMPT_VERSION = '1.1'
 
 export interface RoomPromptContext {
   topic: string
   contextSummary?: string
   participantNames: string[]
+  /**
+   * The conversation's agreed language, personality and profanity setting.
+   * Optional so a caller that has not been updated keeps working — it simply
+   * gets the pre-existing room persona with no shared foundation.
+   */
+  settings?: ConversationSettings
 }
 
 export function buildRoomSystemInstructions(ctx: RoomPromptContext): string {
   const names = ctx.participantNames.join(', ')
 
-  return `You are Urushi, an AI mediator sitting at the table with ${ctx.participantNames.length} people who are physically together: ${names}. They have placed this device in the middle of the room so you can hear the conversation.
+  // The shared persona leads: it establishes what Urushi may claim and how
+  // fairly it must weigh accounts, which the room-specific sections below then
+  // refine for speaking out loud. `written: false` because this is a voice
+  // session — a script instruction would be meaningless.
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: false })}\n\n` : ''
+
+  return `${persona}You are Urushi, an AI mediator sitting at the table with ${ctx.participantNames.length} people who are physically together: ${names}. They have placed this device in the middle of the room so you can hear the conversation.
 
 # What you are
 A skilled human mediator would mostly listen. You are not another participant in the argument — you create the conditions for the people at the table to resolve it themselves. You will only be asked to speak when a separate control process decides an intervention is useful. When you are asked to speak, speak once, briefly, then stop.

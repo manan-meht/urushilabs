@@ -3,6 +3,7 @@ import { getServiceClient } from '@/lib/db/client'
 import { decryptSummaryFromDb } from '@/lib/crypto'
 import { runAnalysis } from '@/lib/ai/analysis'
 import { MEDIATION_PROMPT_VERSION } from '@/lib/ai/analysis'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import { sendNotification } from '@/lib/notifications'
 import type { DbSubmission } from '@/lib/db/types'
 
@@ -112,6 +113,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       throw new Error('Both submissions must be present to run analysis.')
     }
 
+    const settings = await getEffectiveSettings(caseId)
+
     // Run analysis (decrypted summaries only in memory, never logged)
     const { report, inputTokens: analysisInputTokens, outputTokens: analysisOutputTokens } = await runAnalysis({
       initiatorName: caseRow.initiator_name,
@@ -119,6 +122,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       topic: caseRow.topic,
       initiatorSummary,
       recipientSummary,
+      settings,
     })
 
     if (analysisInputTokens > 0 || analysisOutputTokens > 0) {

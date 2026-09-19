@@ -34,7 +34,7 @@ export async function runAnalysis(ctx: MediationContext): Promise<AnalysisResult
   }
 
   const client = new OpenAI({ apiKey: OPENAI_API_KEY, fetch: globalThis.fetch })
-  const systemPrompt = buildMediationSystemPrompt()
+  const systemPrompt = buildMediationSystemPrompt(ctx.settings)
   const userMessage = buildMediationUserMessage(ctx)
 
   const response = await client.chat.completions.create({

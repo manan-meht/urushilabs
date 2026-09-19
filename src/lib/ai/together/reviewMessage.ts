@@ -5,6 +5,8 @@
 
 import { z } from 'zod'
 import { getEnv } from '@/lib/env'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 
 export const MessageReviewSchema = z.object({
   classification: z.enum(['display_as_written', 'offer_reframe', 'block_or_safety_intervention']),
@@ -20,6 +22,11 @@ export async function reviewMessage(opts: {
   otherName: string
   topic: string
   content: string
+  /**
+   * Optional so that callers with no case to read settings from keep the
+   * pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }): Promise<MessageReview> {
   const { OPENAI_API_KEY, OPENAI_MODEL, DEMO_MODE } = getEnv()
 
@@ -32,7 +39,14 @@ export async function reviewMessage(opts: {
 
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.')
 
-  const system = `You are a neutral conflict-resolution facilitator reviewing a message submitted during a joint mediation session.
+  // A reframe is text the speaker will send as their own, so it has to come out
+  // in the same language and register as the rest of the conversation.
+  const persona = opts.settings ? `${buildMediatorPersona(opts.settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = opts.settings ? buildPersonaLanguageReminder(opts.settings) : ''
+
+  const system = `${persona}You are a neutral conflict-resolution facilitator reviewing a message submitted during a joint mediation session.
 
 Both participants are physically present. Your task is to classify this message and, where helpful, suggest a reframe that preserves the speaker's concern while reducing language likely to trigger defensiveness.
 
@@ -67,7 +81,7 @@ Return JSON only, no preamble:
   "originalMeaningSummary": "One sentence: the real concern underneath this message",
   "suggestedReframe": "Rewritten message (only if classification is offer_reframe)",
   "reason": "One sentence explaining the classification (only if not display_as_written)"
-}`
+}${languageReminder ? `\n\n${languageReminder}` : ''}`
 
   const user = `Conversation topic: ${opts.topic}
 

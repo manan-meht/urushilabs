@@ -36,8 +36,9 @@ const LANGUAGE_DIRECTION: Record<OpeningLanguage, string> = {
   hinglish:
     'Speak in natural Hinglish — conversational Hindi mixed with English, the way people ' +
     'actually talk in an Indian office or home. Write it in Latin script, not Devanagari ' +
-    '(for example: "Main Urushi hun", "aap dono", "shuru karte hain"). Do not produce ' +
-    'formal or literary Hindi, and do not translate the participants\' names.',
+    '(for example: "Main Urushi hun", "aap dono", "shuru karte hain"). Do not produce formal ' +
+    'or literary Hindi — no "vibhajan", "mahatvapurn" or "vichar vyakt karna"; keep English ' +
+    'words for anything work-related. Do not translate the participants\' names.',
 }
 
 /**

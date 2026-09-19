@@ -5,6 +5,8 @@
 
 import { z } from 'zod'
 import { getEnv } from '@/lib/env'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from './persona'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 import type { InvitationBrief } from '@/lib/db/types'
 
 export const INVITATION_BRIEF_VERSION = '1.0'
@@ -24,10 +26,22 @@ export interface BriefGenerationContext {
   recipientName: string
   topic: string
   initiatorSummaryJson: string  // The Party A private summary JSON string
+  /**
+   * Optional so that callers with no case to read settings from keep the
+   * pre-persona behaviour exactly.
+   */
+  settings?: ConversationSettings
 }
 
 function buildBriefSystemPrompt(ctx: BriefGenerationContext): string {
-  return `# Identity
+  // Party B has not been heard yet, so the foundation's one-sided-account rules
+  // apply to the brief as much as to the intake that produced it.
+  const persona = ctx.settings ? `${buildMediatorPersona(ctx.settings, { written: true })}\n\n` : ''
+  // Only works in final position, which is why it is appended rather than folded
+  // into the persona block above.
+  const languageReminder = ctx.settings ? buildPersonaLanguageReminder(ctx.settings) : ''
+
+  return `${persona}# Identity
 
 You are preparing a neutral Invitation Brief for a second participant (${ctx.recipientName}) in a conflict-resolution conversation.
 
@@ -58,7 +72,7 @@ Return a JSON object with exactly these fields:
   "invitationToRespond": "A 2–3 sentence respectful invitation telling ${ctx.recipientName} that: they have not been judged; ${ctx.initiatorName}'s account is only one perspective; they will have a full opportunity to explain their own experience; and they do not need to agree with ${ctx.initiatorName}'s description."
 }
 
-No markdown, no preamble, no wrapper object, no explanation outside the JSON. Return only the JSON object.`
+No markdown, no preamble, no wrapper object, no explanation outside the JSON. Return only the JSON object.${languageReminder ? `\n\n${languageReminder}` : ''}`
 }
 
 function buildBriefUserMessage(ctx: BriefGenerationContext): string {

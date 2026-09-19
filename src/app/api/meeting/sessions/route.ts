@@ -4,7 +4,8 @@ import { getServiceClient } from '@/lib/db/client'
 import { generatePublicReference, generateSecureToken, hashToken } from '@/lib/tokens'
 import { consumeRoomCredit } from '@/lib/db/credits'
 import { isMeetingMediationEnabled } from '@/lib/featureFlags'
-import { CreateMeetingSessionSchema } from '@/lib/validation/schemas'
+import { ConversationSettingsSchema, CreateMeetingSessionSchema } from '@/lib/validation/schemas'
+import { conversationSettingsToRow, normalizeConversationSettings } from '@/lib/conversation/settings'
 import { agentSettingsToRow, normalizeAgentSettings } from '@/lib/meeting/agentSettings'
 import { extractFirstName } from '@/lib/invitation'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS } from '@/lib/analytics/meetingEvents'
@@ -36,6 +37,20 @@ export async function POST(req: NextRequest) {
   // Normalizes partial/absent input to complete settings and forces Chair to
   // 'clean' language style regardless of what the client sent (spec §6).
   const resolvedAgentSettings = normalizeAgentSettings(agentSettings)
+
+  // Parsed off the raw body rather than folded into CreateMeetingSessionSchema:
+  // the same block rides on all four create routes, each with its own mode schema.
+  // Distinct from agentSettings above — these three axes live on `cases` and are
+  // shared with every other mode; agentSettings keeps the meeting-only ones.
+  const settingsParsed = ConversationSettingsSchema.safeParse(
+    (body as { conversationSettings?: unknown }).conversationSettings ?? {}
+  )
+  if (!settingsParsed.success) {
+    return NextResponse.json({ errors: settingsParsed.error.flatten().fieldErrors }, { status: 422 })
+  }
+  // The normalizer, not the client, decides what is stored.
+  const conversationSettings = normalizeConversationSettings(settingsParsed.data)
+
   const initiatorFirstName = extractFirstName(
     (user.user_metadata?.['full_name'] as string | undefined) ?? user.email ?? 'The organizer'
   )
@@ -65,6 +80,7 @@ export async function POST(req: NextRequest) {
         consent_version: '1.0',
         conversation_mode: 'meeting_mediation',
         user_id: user.id,
+        ...conversationSettingsToRow(conversationSettings),
       })
       .select('id, public_reference')
       .single()

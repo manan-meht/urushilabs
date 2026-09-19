@@ -4,6 +4,8 @@ import { getEnv } from '@/lib/env'
 import { requireRoomSessionAccess, isAccessError } from '@/lib/room/getSession'
 import { buildRealtimeSessionConfig, getRealtimeConfig } from '@/lib/ai/realtime/config'
 import { buildRoomSystemInstructions } from '@/lib/ai/room/roomPrompt'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
+import { SHARED_DEVICE_REF } from '@/lib/conversation/acceptance'
 import { trackRoomEvent, ROOM_ANALYTICS_EVENTS } from '@/lib/analytics/roomEvents'
 import type { DbRoomParticipant } from '@/lib/db/types'
 
@@ -62,10 +64,16 @@ export async function POST(
     return NextResponse.json({ demo: true, model, voice, transcribeModel })
   }
 
+  // Room mode is one device with everyone around it, so the single
+  // shared-device confirmation is the whole acceptance set. Profanity that
+  // was not confirmed there is forced off before it reaches the prompt.
+  const settings = await getEffectiveSettings(access.caseId, [SHARED_DEVICE_REF])
+
   const instructions = buildRoomSystemInstructions({
     topic: access.session.topic,
     contextSummary: access.session.context_summary ?? undefined,
     participantNames,
+    settings,
   })
 
   const sessionConfig = buildRealtimeSessionConfig({ instructions })

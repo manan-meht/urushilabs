@@ -4,6 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { RELATIONSHIP_LABELS, RELATIONSHIP_OPTIONS } from '@/lib/validation/schemas'
+import {
+  ConversationStyleFields,
+  DEFAULT_CONVERSATION_STYLE_VALUE,
+  type ConversationStyleValue,
+} from './ConversationStyleFields'
 
 interface Props {
   userFirstName: string
@@ -24,6 +29,7 @@ export function StartConversationForm({ userFirstName, userEmail, roomsRemaining
   const [serverError, setServerError] = useState('')
   const [noCredits, setNoCredits] = useState(false)
   const [topic, setTopic] = useState('')
+  const [style, setStyle] = useState<ConversationStyleValue>(DEFAULT_CONVERSATION_STYLE_VALUE)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -37,6 +43,12 @@ export function StartConversationForm({ userFirstName, userEmail, roomsRemaining
       recipientName: fd.get('recipientName'),
       relationship: fd.get('relationship') || undefined,
       topic: fd.get('topic'),
+      conversationSettings: {
+        language: style.language,
+        personality: style.personality,
+        allowProfanity: style.allowProfanity,
+        textScript: style.textScript,
+      },
     }
 
     try {
@@ -191,6 +203,9 @@ export function StartConversationForm({ userFirstName, userEmail, roomsRemaining
             <p className="text-error text-label-md ml-1" role="alert">{errors['topic'][0]}</p>
           )}
         </div>
+
+        {/* Script matters here: intake is answered in writing. */}
+        <ConversationStyleFields value={style} onChange={setStyle} showScript />
 
         {/* Privacy note */}
         <div className="flex gap-3 p-4 bg-surface-container-low rounded-xl border border-outline-variant/40 items-start">

@@ -39,6 +39,7 @@ import {
   type MeetingAgentSettings,
 } from '@/lib/meeting/agentSettings'
 import { buildMeetingSystemPrompt } from './personaPrompt'
+import { PERSONALITY_MODULES } from '@/lib/ai/persona/personalities'
 
 const NOW = 1_700_000_000_000
 
@@ -202,23 +203,23 @@ describe('Test 5 — healthy conversation stays uninterrupted', () => {
 // ─── Test 6: contradiction (Straight Shooter is primed for it) ───────────────
 
 describe('Test 6 — Straight Shooter and contradiction', () => {
-  it('gives Straight Shooter a lower bar for CONTRADICTION than Chair', () => {
+  it('gives Straight Shooter a lower bar for CONTRADICTION than the Diplomat', () => {
     const shooter = thresholdForReason(settings({ personality: 'straight_shooter' }), 'CONTRADICTION')
-    const chair = thresholdForReason(settings({ personality: 'chair' }), 'CONTRADICTION')
-    expect(shooter).toBeLessThan(chair)
+    const diplomat = thresholdForReason(settings({ personality: 'diplomat' }), 'CONTRADICTION')
+    expect(shooter).toBeLessThan(diplomat)
   })
 
-  it('admits a mid-confidence contradiction for Straight Shooter that Chair would drop', () => {
+  it('admits a mid-confidence contradiction for Straight Shooter that the Diplomat would drop', () => {
     const c = { confidence: 0.55, reason: 'CONTRADICTION' as const }
     const shooterDecision = applyThresholds(approved(c), ctx({ settings: settings({ personality: 'straight_shooter' }) }))
-    const chairDecision = applyThresholds(approved(c), ctx({ settings: settings({ personality: 'chair' }) }))
+    const diplomatDecision = applyThresholds(approved(c), ctx({ settings: settings({ personality: 'diplomat' }) }))
 
     expect(shooterDecision.shouldIntervene).toBe(true)
-    expect(chairDecision.shouldIntervene).toBe(false)
+    expect(diplomatDecision.shouldIntervene).toBe(false)
   })
 
-  it('gives Chair a lower bar for agenda drift than Straight Shooter', () => {
-    expect(thresholdForReason(settings({ personality: 'chair' }), 'AGENDA_DRIFT'))
+  it('gives the Diplomat a lower bar for agenda drift than Straight Shooter', () => {
+    expect(thresholdForReason(settings({ personality: 'diplomat' }), 'AGENDA_DRIFT'))
       .toBeLessThan(thresholdForReason(settings({ personality: 'straight_shooter' }), 'AGENDA_DRIFT'))
   })
 })
@@ -226,32 +227,54 @@ describe('Test 6 — Straight Shooter and contradiction', () => {
 // ─── Test 6b: vagueness and unsupported claims ("call out bullshit") ─────────
 
 describe('Test 6b — vagueness and unsupported/manipulative claims', () => {
-  it('gives both Chair and Straight Shooter a lower bar for VAGUENESS than Observer-level tuning', () => {
+  it('gives both the Diplomat and Straight Shooter a lower bar for VAGUENESS than Observer-level tuning', () => {
     const facilitatorDefault = thresholdForReason(settings({ interventionLevel: 'facilitator' }), 'EMOTIONAL_ISSUE')
-    const chairVagueness = thresholdForReason(settings({ personality: 'chair' }), 'VAGUENESS')
+    const diplomatVagueness = thresholdForReason(settings({ personality: 'diplomat' }), 'VAGUENESS')
     const shooterVagueness = thresholdForReason(settings({ personality: 'straight_shooter' }), 'VAGUENESS')
-    expect(chairVagueness).toBeLessThan(facilitatorDefault)
+    expect(diplomatVagueness).toBeLessThan(facilitatorDefault)
     expect(shooterVagueness).toBeLessThan(facilitatorDefault)
   })
 
-  it('gives Straight Shooter a lower bar for UNSUPPORTED_CLAIM than Chair', () => {
+  it('gives Straight Shooter a lower bar for UNSUPPORTED_CLAIM than the Diplomat', () => {
     const shooter = thresholdForReason(settings({ personality: 'straight_shooter' }), 'UNSUPPORTED_CLAIM')
-    const chair = thresholdForReason(settings({ personality: 'chair' }), 'UNSUPPORTED_CLAIM')
-    expect(shooter).toBeLessThan(chair)
+    const diplomat = thresholdForReason(settings({ personality: 'diplomat' }), 'UNSUPPORTED_CLAIM')
+    expect(shooter).toBeLessThan(diplomat)
   })
 
-  it('admits a mid-confidence unsupported claim for Straight Shooter that Chair would drop', () => {
+  it('admits a mid-confidence unsupported claim for Straight Shooter that the Diplomat would drop', () => {
     const c = { confidence: 0.55, reason: 'UNSUPPORTED_CLAIM' as const }
     const shooterDecision = applyThresholds(approved(c), ctx({ settings: settings({ personality: 'straight_shooter' }) }))
-    const chairDecision = applyThresholds(approved(c), ctx({ settings: settings({ personality: 'chair' }) }))
+    const diplomatDecision = applyThresholds(approved(c), ctx({ settings: settings({ personality: 'diplomat' }) }))
 
     expect(shooterDecision.shouldIntervene).toBe(true)
-    expect(chairDecision.shouldIntervene).toBe(false)
+    expect(diplomatDecision.shouldIntervene).toBe(false)
   })
 
   it('does not treat vagueness or unsupported claims as urgent — they still respect the budget/cooldown gate', () => {
     expect(isUrgentReason('VAGUENESS')).toBe(false)
     expect(isUrgentReason('UNSUPPORTED_CLAIM')).toBe(false)
+  })
+})
+
+// ─── Test 6c: the Deal Maker's priorities ────────────────────────────────────
+
+describe('Test 6c — Deal Maker', () => {
+  it('is primed for the reasons that stand between the room and a concrete agreement', () => {
+    for (const reason of ['DECISION_READY', 'NEXT_STEP_NEEDED', 'HIDDEN_AGREEMENT'] as const) {
+      expect(thresholdForReason(settings({ personality: 'deal_maker' }), reason))
+        .toBeLessThan(thresholdForReason(settings({ personality: 'straight_shooter' }), reason))
+    }
+  })
+
+  it('is not primed for contradiction — that is the Straight Shooter\'s axis, not a deal-maker\'s', () => {
+    expect(thresholdForReason(settings({ personality: 'deal_maker' }), 'CONTRADICTION'))
+      .toBeGreaterThan(thresholdForReason(settings({ personality: 'straight_shooter' }), 'CONTRADICTION'))
+  })
+
+  it('admits a mid-confidence NEXT_STEP_NEEDED that Straight Shooter would drop', () => {
+    const c = { confidence: 0.55, reason: 'NEXT_STEP_NEEDED' as const }
+    expect(applyThresholds(approved(c), ctx({ settings: settings({ personality: 'deal_maker' }) })).shouldIntervene).toBe(true)
+    expect(applyThresholds(approved(c), ctx({ settings: settings({ personality: 'straight_shooter' }) })).shouldIntervene).toBe(false)
   })
 })
 
@@ -456,18 +479,18 @@ describe('Agent settings normalization', () => {
   it('resolves a pre-migration NULL row to the documented defaults', () => {
     const resolved = normalizeAgentSettings(null)
     expect(resolved).toEqual({
-      personality: 'chair',
+      personality: 'diplomat',
       voiceGender: 'female',
       region: 'american',
       language: 'auto',
       interventionLevel: 'facilitator',
-      languageStyle: 'clean', // forced: Chair never uses profanity
+      languageStyle: 'clean', // forced: only Straight Shooter has a profanity control
     })
   })
 
-  it('forces Chair to clean language even if another style is supplied', () => {
-    const resolved = normalizeAgentSettings({ personality: 'chair', languageStyle: 'unfiltered' })
-    expect(resolved.languageStyle).toBe('clean')
+  it('forces every non-Straight-Shooter personality to clean language even if another style is supplied', () => {
+    expect(normalizeAgentSettings({ personality: 'diplomat', languageStyle: 'unfiltered' }).languageStyle).toBe('clean')
+    expect(normalizeAgentSettings({ personality: 'deal_maker', languageStyle: 'unfiltered' }).languageStyle).toBe('clean')
   })
 
   it('keeps the requested style for Straight Shooter', () => {
@@ -477,7 +500,7 @@ describe('Agent settings normalization', () => {
 
   it('falls back to defaults on unrecognised values', () => {
     const resolved = normalizeAgentSettings({ personality: 'nonsense', region: 'martian' })
-    expect(resolved.personality).toBe('chair')
+    expect(resolved.personality).toBe('diplomat')
     expect(resolved.region).toBe('american')
   })
 })
@@ -495,9 +518,9 @@ describe('Persona prompt composition', () => {
     expect(prompt).toContain('As an AI')
   })
 
-  it('omits the profanity module entirely for Chair', () => {
+  it('omits the profanity module entirely for the Diplomat', () => {
     const prompt = buildMeetingSystemPrompt({
-      settings: settings({ personality: 'chair' }),
+      settings: settings({ personality: 'diplomat' }),
       meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
     })
     expect(prompt).not.toContain('Profanity filter: On (strong)')
@@ -524,7 +547,7 @@ describe('Persona prompt composition', () => {
   })
 
   it('always carries the neutrality and safety rules regardless of personality', () => {
-    for (const personality of ['chair', 'straight_shooter'] as const) {
+    for (const personality of ['diplomat', 'straight_shooter', 'deal_maker'] as const) {
       const prompt = buildMeetingSystemPrompt({
         settings: settings({ personality }),
         meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
@@ -532,6 +555,20 @@ describe('Persona prompt composition', () => {
       expect(prompt).toContain('Apply the same standard to every participant')
       expect(prompt).toContain('Never threaten, humiliate, demean or bully')
     }
+  })
+
+  it('composes the Deal Maker from the shared personality module plus the meeting role', () => {
+    const prompt = buildMeetingSystemPrompt({
+      settings: settings({ personality: 'deal_maker', languageStyle: 'unfiltered' }),
+      meetingContext: { topic: 'x', participantNames: ['A', 'B'] },
+    })
+    // Verbatim from the shared set — the meeting must not keep its own copy.
+    expect(prompt).toContain(PERSONALITY_MODULES.deal_maker)
+    expect(prompt).not.toContain(PERSONALITY_MODULES.straight_shooter)
+    // Plus the live-call framing the shared foundation does not cover.
+    expect(prompt).toContain('You are NOT an AI assistant observing this meeting')
+    // No profanity section at all, even though a style was supplied.
+    expect(prompt).not.toContain('Profanity filter')
   })
 
   it('adds entry-style guidance only when generating speech', () => {
