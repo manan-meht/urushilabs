@@ -4,7 +4,7 @@ import { requireRoomSessionAccess, isAccessError } from '@/lib/room/getSession'
 import { RoomInterveneSchema } from '@/lib/validation/schemas'
 import { decideIntervention, type RoomTranscriptEntry } from '@/lib/ai/room/mediationController'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
-import { detectMediatorChallenge } from '@/lib/ai/room/mediatorChallenge'
+import { detectMediatorChallenge, detectVerdictRequest } from '@/lib/ai/room/mediatorChallenge'
 import { getRealtimeConfig } from '@/lib/ai/realtime/config'
 import { getConversationSettings } from '@/lib/conversation/getSettings'
 import { detectProfanityObjection } from '@/lib/conversation/profanityObjection'
@@ -184,11 +184,12 @@ export async function POST(
       : { speakerName, content },
     secondsSinceLastIntervention,
     recentSpokenActions: (recentSpokenActions ?? []).map((r) => r.action as string),
-    lastSpokenText: (recentSpokenActions ?? [])[0]?.spoken_text as string | undefined,
+    recentSpokenTexts: (recentSpokenActions ?? []).map((r) => r.spoken_text as string).filter(Boolean).slice(0, 3),
     // A challenge to the mediator always deserves an answer, so it bypasses the
     // cooldown for the same reason being asked a direct question does.
     challengedByParticipant: detectMediatorChallenge(content),
-    directlyAddressed: detectDirectAddress(content) || profanityJustDisabled || detectMediatorChallenge(content),
+    askedForVerdict: detectVerdictRequest(content),
+    directlyAddressed: detectDirectAddress(content) || profanityJustDisabled || detectMediatorChallenge(content) || detectVerdictRequest(content),
     silenceSeconds: isPause ? (silenceSeconds ?? 0) : undefined,
     floorIsUrushis,
     profanityJustDisabled,
@@ -218,27 +219,52 @@ export async function POST(
   let newAgreementId: string | null = null
 
   if (decision.action === 'IDENTIFY_ISSUE' && decision.currentIssueTitle) {
-    const { count } = await db.from('room_issues').select('id', { count: 'exact', head: true }).eq('session_id', id)
-    const { data: issueRow } = await db
+    const { data: existingIssues } = await db
       .from('room_issues')
-      .insert({
-        session_id: id,
-        case_id: access.caseId,
-        title: decision.currentIssueTitle,
-        neutral_description: decision.reasoning,
-        priority: (count ?? 0) + 1,
-        status: 'discussing',
-      })
-      .select('id')
-      .single()
-    if (issueRow) {
-      newIssueId = issueRow.id
-      await db.from('room_sessions').update({ current_issue_id: issueRow.id }).eq('id', id)
+      .select('id, title, status')
+      .eq('session_id', id)
+
+    // Re-use an issue the room is already on rather than filing another copy.
+    // Every IDENTIFY_ISSUE used to insert unconditionally, and a single session
+    // accumulated four rows for one dispute — three with identical titles, one
+    // of them marked agreed while a different one was "current". The final
+    // report is built from these, so the duplicates are not cosmetic.
+    const normalized = decision.currentIssueTitle.trim().toLowerCase()
+    const existing = (existingIssues ?? []).find((i) => {
+      const other = String(i.title).trim().toLowerCase()
+      return other === normalized || other.includes(normalized) || normalized.includes(other)
+    })
+
+    if (existing) {
+      newIssueId = existing.id
+      await db.from('room_sessions').update({ current_issue_id: existing.id }).eq('id', id)
+    } else {
+      const { data: issueRow } = await db
+        .from('room_issues')
+        .insert({
+          session_id: id,
+          case_id: access.caseId,
+          title: decision.currentIssueTitle,
+          neutral_description: decision.reasoning,
+          priority: (existingIssues ?? []).length + 1,
+          status: 'discussing',
+        })
+        .select('id')
+        .single()
+      if (issueRow) {
+        newIssueId = issueRow.id
+        await db.from('room_sessions').update({ current_issue_id: issueRow.id }).eq('id', id)
+      }
     }
   }
 
   if (decision.action === 'MOVE_TO_NEXT_ISSUE' && access.session.current_issue_id) {
-    await db.from('room_issues').update({ status: 'agreed' }).eq('id', access.session.current_issue_id)
+    // 'unresolved', not 'agreed'. Moving on is not agreement, and recording one
+    // as the other puts a settlement in the final report that nobody made — the
+    // exact thing the mediator prompt forbids ("never record agreement that was
+    // not explicitly given"). Agreement is recorded by CONFIRM_AGREEMENT, where
+    // someone actually says yes.
+    await db.from('room_issues').update({ status: 'unresolved' }).eq('id', access.session.current_issue_id)
     await db.from('room_sessions').update({ current_issue_id: null }).eq('id', id)
   }
 

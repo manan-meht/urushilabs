@@ -247,10 +247,20 @@ class RoomSession:
                 continue
 
             self._pause_reported_at = time.monotonic()
+            asked_at = self._last_activity
             try:
                 decision = await self._api.report_pause(quiet_for)
             except Exception:  # noqa: BLE001 - a failed poll must not kill the session
                 logger.debug("Pause report failed", exc_info=True)
+                continue
+
+            # Somebody started talking while we were asking. The lull is over, so
+            # the answer is stale — taking the turn now would mean speaking over
+            # whoever just began. Observed live: a pause fired one second after a
+            # transcript arrived, because the round trip takes a couple of
+            # seconds and nothing re-checked afterwards.
+            if self._last_activity != asked_at:
+                logger.debug("Pause answer discarded — someone spoke while we were asking.")
                 continue
 
             if decision.action != "LISTEN":

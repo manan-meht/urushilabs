@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectMediatorChallenge } from './mediatorChallenge'
+import { detectMediatorChallenge, detectVerdictRequest } from './mediatorChallenge'
 
 describe('detectMediatorChallenge', () => {
   it('catches complaints about one-sidedness', () => {
@@ -58,5 +58,30 @@ describe('detectMediatorChallenge', () => {
 
   it('handles empty input', () => {
     expect(detectMediatorChallenge('')).toBe(false)
+  })
+})
+
+describe('detectVerdictRequest', () => {
+  it('catches requests for a verdict in both languages', () => {
+    for (const text of [
+      'उरुशी किसका पॉइंट सही है?',
+      'आपकी राय क्या है?',
+      'Toh galti kiski hai?',
+      'Kaun sahi hai?',
+      'Who is right here?',
+      'Whose argument holds up?',
+    ]) {
+      expect(detectVerdictRequest(text), text).toBe(true)
+    }
+  })
+
+  it('does not fire on ordinary questions', () => {
+    for (const text of [
+      'Friday ko kya hua tha?',
+      'What time is the meeting?',
+      'तुमने उसे बताया था क्या?',
+    ]) {
+      expect(detectVerdictRequest(text), text).toBe(false)
+    }
   })
 })

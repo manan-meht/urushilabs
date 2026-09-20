@@ -158,7 +158,12 @@ ${buildSpokenLanguageDirection(ctx.spokenLanguages ?? [])}`
 
   const repetitionLines: string[] = []
   if (recent.length > 0) repetitionLines.push(`Your last spoken turns were: ${recent.join(', ')}.`)
-  if (ctx.lastSpokenText) repetitionLines.push(`Your last words were: "${ctx.lastSpokenText}" — do not say that again in different words.`)
+  if (ctx.recentSpokenTexts && ctx.recentSpokenTexts.length > 0) {
+    repetitionLines.push(
+      `You recently said: ${ctx.recentSpokenTexts.map((t) => `"${t}"`).join(' / ')} — do not repeat any of ` +
+      'those, or rephrase them, or reuse their closing line.'
+    )
+  }
   if (askedForMore >= 2) {
     repetitionLines.push(
       'You have already asked them to clarify or confirm more than once. Do NOT ask again — they have ' +
@@ -226,7 +231,11 @@ Recent conversation (oldest first):
 ${transcriptLines || '(no prior conversation yet)'}
 
 Most recent utterance:
-${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}${ctx.challengedByParticipant ? `\n\nTHIS IS A COMPLAINT ABOUT YOU. Answer it directly, in your very next sentence. " +
+${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}${ctx.askedForVerdict ? `\n\nTHEY HAVE ASKED YOU WHO IS RIGHT. Answer it. Either say plainly whose position is stronger " +
+    "and why, citing what they actually said, or — if the conversation genuinely does not contain enough to " +
+    "judge — name the ONE specific fact that would settle it, as a question they can answer in a sentence. " +
+    "Do NOT ask them to explain in more detail, share more context, or elaborate: that is not withholding " +
+    "judgement, it is avoiding it, and it is what they are complaining about.` : ''}${ctx.challengedByParticipant ? `\n\nTHIS IS A COMPLAINT ABOUT YOU. Answer it directly, in your very next sentence. " +
     "Find the specific thing they say you missed — look back through what the other person said and has not " +
     "been challenged — and challenge it now, by name, quoting their words. Do NOT de-escalate. Do NOT suggest " +
     "a break. Do NOT ask for more information, more detail, or whether there are other issues: they have told " +

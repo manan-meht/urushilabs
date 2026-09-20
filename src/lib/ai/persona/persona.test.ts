@@ -47,7 +47,11 @@ describe('buildMediatorPersona — personality', () => {
   it('gives the Straight Shooter permission to say who is right', () => {
     const prompt = buildMediatorPersona(settings({ personality: 'straight_shooter' }))
     expect(prompt).toContain('which argument is stronger')
-    expect(prompt).toContain("Do not pick a winner when the information genuinely isn't sufficient")
+    // Judging early is the whole proposition; withholding is the exception, and
+    // the bar for it is deliberately high.
+    expect(prompt).toContain('Judge early and narrowly')
+    expect(prompt).toContain('You do not need the whole picture to call a specific point')
+    expect(prompt).toContain('Withhold judgement only when the conversation genuinely contains nothing to judge on')
     expect(prompt).toContain('Do not become permanently aligned with one person')
   })
 

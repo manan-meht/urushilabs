@@ -122,10 +122,10 @@ describe('not repeating itself — expanded', () => {
     const { user } = buildInterventionPrompt({
       ...baseCtx,
       recentSpokenActions: ['DEESCALATE', 'DEESCALATE'],
-      lastSpokenText: 'Chalo thoda break lete hain.',
+      recentSpokenTexts: ['Chalo thoda break lete hain.'],
     })
-    expect(user).toContain('Your last words were: "Chalo thoda break lete hain."')
-    expect(user).toContain('do not say that again in different words')
+    expect(user).toContain('You recently said: "Chalo thoda break lete hain."')
+    expect(user).toContain('reuse their closing line')
   })
 
   it('flags the same action twice in a row, whatever the action', () => {

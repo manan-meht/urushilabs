@@ -119,14 +119,18 @@ export interface MediationContext {
    */
   recentSpokenActions?: string[]
   /**
-   * The exact words of Urushi's most recent spoken turn.
+   * The exact words of Urushi's last few spoken turns, most recent first.
    *
    * Action types alone were not enough: two DEESCALATEs 34 seconds apart said
-   * nearly the same sentence and the guard, which only watched three action
+   * nearly the same sentence and the guard, which watched only three action
    * types, saw nothing. A participant noticed before the system did — "ye aap do
    * baar bol chuke ho".
+   *
+   * Several turns rather than one, because the tic was a closing phrase that
+   * recurred every few turns ("aap dono ke liye kya important hai") and a
+   * comparison against only the previous turn never saw it.
    */
-  lastSpokenText?: string
+  recentSpokenTexts?: string[]
   /**
    * A participant just told Urushi it is failing them — being one-sided,
    * repeating itself, or not helping.
@@ -137,6 +141,14 @@ export interface MediationContext {
    * other issues.
    */
   challengedByParticipant?: boolean
+  /**
+   * Someone asked Urushi to say who is right.
+   *
+   * The Straight Shooter's whole proposition. Carried as a flag so the
+   * instruction lands in final position — the personality module already said
+   * not to answer with "explain in more detail", and it did exactly that.
+   */
+  askedForVerdict?: boolean
 }
 
 export async function decideIntervention(ctx: MediationContext): Promise<InterventionDecision> {

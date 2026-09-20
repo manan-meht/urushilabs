@@ -61,3 +61,43 @@ export function detectMediatorChallenge(text: string): boolean {
   if (!text) return false
   return CHALLENGE_PATTERNS.some((pattern) => pattern.test(normalize(text)))
 }
+
+/**
+ * Detects a participant asking the mediator to judge between them.
+ *
+ * Separate from a complaint: this is "who is right?", which the Straight Shooter
+ * exists to answer. Left to the prompt it produced "could you both explain in
+ * more detail" — the personality module says in as many words not to do that,
+ * and it did it anyway, because a rule in the middle of a long prompt does not
+ * survive contact with a hard question.
+ */
+const VERDICT_PATTERNS: RegExp[] = [
+  /\bwho(?:'?s| is| was)\s+(right|wrong|correct|at fault|to blame)\b/i,
+  /\bwhose\s+(point|argument|side|fault|version)\b/i,
+  /\b(am|was)\s+i\s+(right|wrong)\b/i,
+  /\bwhat do you think\b[^.?!]{0,20}\b(right|wrong|fair)\b/i,
+  /किसका\s*(पॉइंट|point|कहना|तर्क)?\s*(सही|ठीक|गलत)/,
+  /कौन\s*(सही|ठीक|गलत)\s*है/,
+  /\bkiska\s*(point|kehna)?\s*(sahi|theek|galat)/i,
+  /\bkaun\s*(sahi|theek|galat)\s*hai/i,
+  /\b(aapki|apki|tumhari)\s*(ray|raay|raai)\s*kya\s*hai/i,
+  /आपकी\s*राय\s*क्या/,
+  // Fault framed as a possessive, which is how it is usually asked out loud:
+  // "galti kiski hai" rather than "kaun galat hai".
+  /\b(galti|galati)\s*kis(ki|ka)\b/i,
+  /\bkis(ki|ka)\s*(galti|galati)\b/i,
+  /(ग़लती|गलती)\s*किस(की|का)/,
+  /किस(की|का)\s*(ग़लती|गलती)/,
+]
+
+/**
+ * True when someone is asking Urushi for a verdict.
+ *
+ * Callers must treat it as requiring either a position — said plainly, from what
+ * was actually said — or the ONE specific fact that would settle it. Never a
+ * general request for more detail.
+ */
+export function detectVerdictRequest(text: string): boolean {
+  if (!text) return false
+  return VERDICT_PATTERNS.some((pattern) => pattern.test(normalize(text)))
+}
