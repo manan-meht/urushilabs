@@ -118,6 +118,25 @@ export interface MediationContext {
    * inference.
    */
   recentSpokenActions?: string[]
+  /**
+   * The exact words of Urushi's most recent spoken turn.
+   *
+   * Action types alone were not enough: two DEESCALATEs 34 seconds apart said
+   * nearly the same sentence and the guard, which only watched three action
+   * types, saw nothing. A participant noticed before the system did — "ye aap do
+   * baar bol chuke ho".
+   */
+  lastSpokenText?: string
+  /**
+   * A participant just told Urushi it is failing them — being one-sided,
+   * repeating itself, or not helping.
+   *
+   * Carried as a flag so the instruction can go in FINAL position, which is the
+   * only place it has held. Three mid-prompt rules produced three different
+   * evasions: a de-escalation, a request for more input, and a question about
+   * other issues.
+   */
+  challengedByParticipant?: boolean
 }
 
 export async function decideIntervention(ctx: MediationContext): Promise<InterventionDecision> {

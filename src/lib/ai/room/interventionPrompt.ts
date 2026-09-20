@@ -77,6 +77,31 @@ reads as a broken device rather than as a mediator exercising judgement.
    and ask one of them to describe how they see it. Once they're genuinely
    discussing the dispute, revert to listening by default.
 
+# When someone challenges YOU
+If a participant says you are being one-sided, letting someone off, not helping, repeating yourself, or not
+answering them — engage with that, immediately and specifically. Do not respond with a de-escalation, a
+suggestion to take a break, or a general invitation to keep talking. Those read as evasion, and they are:
+you have been told what is wrong and replied with something that could follow any sentence at all.
+
+"You're not saying anything to Sonam" is a claim you can check. Go back through what that person actually
+said, find the thing that went unchallenged, and challenge it NOW, by name, quoting what they said. That is
+what fairness means here, and it is precisely what they chose this personality for.
+
+Do not answer a challenge by asking for more input. "Tell me more so I can help better" is the same evasion
+in a kinder voice — they have told you the problem, and the problem is that you have not acted.
+
+Worked example. Sonam said "let him do the work, I don't care", nobody pushed back, and Manan says you are
+letting her off.
+  WRONG: "I hear that you feel I'm not being fair. Tell me both your points so I can help better."
+  WRONG: "There seems to be tension. Let's take a break and come back calmly."
+  RIGHT: "Fair point. Sonam — 'mujhe farak nahi padta' isn't a position, it's a way of not having the
+          argument. You're half of this business. Which parts of it do you actually want to own?"
+
+If you genuinely think the criticism is wrong, say so in one sentence and say why. Do not go quiet, and do
+not change the subject.
+
+Being asked to do your job is not a sign of escalating conflict. Do not treat it as one.
+
 # Never say the same thing twice
 Read your own previous turns in the transcript before deciding. If you have
 already asked the room to explain, elaborate, or share their views, do NOT ask
@@ -123,15 +148,39 @@ ${buildSpokenLanguageDirection(ctx.spokenLanguages ?? [])}`
 
   // Concrete and computed, rather than "read your own turns and notice".
   const recent = ctx.recentSpokenActions ?? []
-  const askedTwice = recent.filter((a) => a === 'CLARIFY' || a === 'IDENTIFY_ISSUE' || a === 'INVITE_PARTICIPANT').length >= 2
-  const repetition = recent.length > 0
-    ? `\nYour last spoken turns were: ${recent.join(', ')}.` +
-      (askedTwice
-        ? ' You have already asked them to clarify or confirm more than once. Do NOT ask again — they have ' +
-          'answered, and asking a third time reads as stalling. Use what they gave you: state what you now ' +
-          'understand the issue to be and move to what happens about it, or take a position.'
-        : '') + '\n'
-    : ''
+  // Every action counts, not a hand-picked three. Two near-identical DEESCALATEs
+  // slipped through a list that watched only CLARIFY/IDENTIFY_ISSUE/
+  // INVITE_PARTICIPANT, and a participant caught it before the system did.
+  const askedForMore = recent.filter(
+    (a) => a === 'CLARIFY' || a === 'IDENTIFY_ISSUE' || a === 'INVITE_PARTICIPANT'
+  ).length
+  const repeatedSameAction = recent.length >= 2 && recent[0] === recent[1]
+
+  const repetitionLines: string[] = []
+  if (recent.length > 0) repetitionLines.push(`Your last spoken turns were: ${recent.join(', ')}.`)
+  if (ctx.lastSpokenText) repetitionLines.push(`Your last words were: "${ctx.lastSpokenText}" — do not say that again in different words.`)
+  if (askedForMore >= 2) {
+    repetitionLines.push(
+      'You have already asked them to clarify or confirm more than once. Do NOT ask again — they have ' +
+      'answered, and asking a third time reads as stalling. Use what they gave you: say what you now ' +
+      'understand the issue to be, take a position on it, or propose something concrete.'
+    )
+  }
+  if (repeatedSameAction) {
+    repetitionLines.push(`You have just done ${recent[0]} twice in a row. Do something different.`)
+  }
+  // An issue that is already being tracked has been named and agreed. Asking the
+  // room to confirm it again is the single complaint participants have raised
+  // most often, and no count of action types catches it — the fact that an issue
+  // exists does.
+  if (ctx.currentIssueTitle) {
+    repetitionLines.push(
+      `The issue "${ctx.currentIssueTitle}" is already settled and agreed. Do NOT ask them to confirm ` +
+      'what the issues are, or re-state them as a question. That ground is covered — move to what happens ' +
+      'about it.'
+    )
+  }
+  const repetition = repetitionLines.length > 0 ? `\n${repetitionLines.join(' ')}\n` : ''
 
   const turnTaking = ctx.floorIsUrushis
     ? `\nThe room has gone quiet for ${Math.round(ctx.silenceSeconds ?? 0)} seconds. You spoke last, they ` +
@@ -177,7 +226,12 @@ Recent conversation (oldest first):
 ${transcriptLines || '(no prior conversation yet)'}
 
 Most recent utterance:
-${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}
+${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}${ctx.challengedByParticipant ? `\n\nTHIS IS A COMPLAINT ABOUT YOU. Answer it directly, in your very next sentence. " +
+    "Find the specific thing they say you missed — look back through what the other person said and has not " +
+    "been challenged — and challenge it now, by name, quoting their words. Do NOT de-escalate. Do NOT suggest " +
+    "a break. Do NOT ask for more information, more detail, or whether there are other issues: they have told " +
+    "you what is wrong and asking them to explain it again is the evasion they are complaining about. If you " +
+    "truly think they are wrong, say so and say why, in one sentence.` : ''}
 
 It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.`
 

@@ -4,6 +4,7 @@ import { requireRoomSessionAccess, isAccessError } from '@/lib/room/getSession'
 import { RoomInterveneSchema } from '@/lib/validation/schemas'
 import { decideIntervention, type RoomTranscriptEntry } from '@/lib/ai/room/mediationController'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
+import { detectMediatorChallenge } from '@/lib/ai/room/mediatorChallenge'
 import { getRealtimeConfig } from '@/lib/ai/realtime/config'
 import { getConversationSettings } from '@/lib/conversation/getSettings'
 import { detectProfanityObjection } from '@/lib/conversation/profanityObjection'
@@ -73,7 +74,7 @@ export async function POST(
     // What Urushi has actually SAID recently. Telling the model to read its own
     // turns out of the transcript did not stop it asking the same question
     // repeatedly; handing it the list does not depend on that inference.
-    db.from('room_interventions').select('action').eq('session_id', id).not('spoken_text', 'is', null).order('triggered_at', { ascending: false }).limit(4),
+    db.from('room_interventions').select('action, spoken_text').eq('session_id', id).not('spoken_text', 'is', null).order('triggered_at', { ascending: false }).limit(8),
     access.session.current_issue_id
       ? db.from('room_issues').select('title').eq('id', access.session.current_issue_id).single()
       : Promise.resolve({ data: null }),
@@ -183,7 +184,11 @@ export async function POST(
       : { speakerName, content },
     secondsSinceLastIntervention,
     recentSpokenActions: (recentSpokenActions ?? []).map((r) => r.action as string),
-    directlyAddressed: detectDirectAddress(content) || profanityJustDisabled,
+    lastSpokenText: (recentSpokenActions ?? [])[0]?.spoken_text as string | undefined,
+    // A challenge to the mediator always deserves an answer, so it bypasses the
+    // cooldown for the same reason being asked a direct question does.
+    challengedByParticipant: detectMediatorChallenge(content),
+    directlyAddressed: detectDirectAddress(content) || profanityJustDisabled || detectMediatorChallenge(content),
     silenceSeconds: isPause ? (silenceSeconds ?? 0) : undefined,
     floorIsUrushis,
     profanityJustDisabled,

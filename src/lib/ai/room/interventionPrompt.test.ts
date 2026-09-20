@@ -114,3 +114,46 @@ describe('not repeating itself', () => {
     expect(user).not.toContain('Do NOT ask again')
   })
 })
+
+describe('not repeating itself — expanded', () => {
+  it('quotes its own last words back to itself', () => {
+    // Action types alone missed two near-identical DEESCALATEs; a participant
+    // caught it before the system did.
+    const { user } = buildInterventionPrompt({
+      ...baseCtx,
+      recentSpokenActions: ['DEESCALATE', 'DEESCALATE'],
+      lastSpokenText: 'Chalo thoda break lete hain.',
+    })
+    expect(user).toContain('Your last words were: "Chalo thoda break lete hain."')
+    expect(user).toContain('do not say that again in different words')
+  })
+
+  it('flags the same action twice in a row, whatever the action', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, recentSpokenActions: ['DEESCALATE', 'DEESCALATE'] })
+    expect(user).toContain('just done DEESCALATE twice in a row')
+  })
+
+  it('forbids re-confirming an issue that is already settled', () => {
+    // The most frequent complaint from real sessions, and no count of action
+    // types catches it — the existence of a tracked issue does.
+    const { user } = buildInterventionPrompt({ ...baseCtx, currentIssueTitle: 'Workload distribution' })
+    expect(user).toContain('"Workload distribution" is already settled')
+    expect(user).toContain('Do NOT ask them to confirm')
+  })
+
+  it('says nothing about settled issues before one exists', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, currentIssueTitle: undefined })
+    expect(user).not.toContain('already settled')
+  })
+})
+
+describe('challenges aimed at Urushi', () => {
+  it('requires engagement rather than de-escalation', () => {
+    // Observed live: "you're not saying anything to Sonam" got a generic
+    // "let's take a break", which is evasion dressed as care.
+    const { system } = buildInterventionPrompt(baseCtx)
+    expect(system).toContain('When someone challenges YOU')
+    expect(system).toContain('Do not respond with a de-escalation')
+    expect(system).toContain('Being asked to do your job is not a sign of escalating conflict')
+  })
+})

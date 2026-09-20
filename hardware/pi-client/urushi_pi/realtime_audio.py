@@ -123,6 +123,11 @@ class RealtimeAudioSession:
         mediation controller, then hand control back to the normal handler."""
         self._on_transcript = handler
 
+    @property
+    def assistant_speaking(self) -> bool:
+        """Whether Urushi is mid-response right now."""
+        return self._assistant_speaking
+
     def trigger_assistant_response(self, spoken_text: str) -> bool:
         """Manually asks Urushi to speak. The mediation controller decides when
         to call this — turn_detection.create_response is false server-side
@@ -133,6 +138,16 @@ class RealtimeAudioSession:
         than assume; a closed data channel silently swallows the utterance."""
         if not self._data_channel or self._data_channel.readyState != "open":
             logger.warning("Cannot trigger assistant response — data channel not open.")
+            return False
+
+        # Never start a second response over one already playing. Two utterances
+        # arriving together produce two concurrent /intervene calls, and neither
+        # has committed its own intervention row when the other reads the
+        # cooldown — so both are approved. The room then hears Urushi talk over
+        # itself, and the API returns an error for the overlapping
+        # response.create.
+        if self._assistant_speaking:
+            logger.info("Already speaking — dropping the overlapping response.")
             return False
         self._data_channel.send(json.dumps({
             "type": "response.create",
