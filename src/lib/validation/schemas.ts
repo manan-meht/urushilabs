@@ -212,11 +212,28 @@ export const RoomCalibrateSchema = z.object({
 export type RoomCalibrateInput = z.infer<typeof RoomCalibrateSchema>
 
 export const RoomInterveneSchema = z.object({
-  content: z.string().trim().min(1).max(2000),
+  // Empty for a pause — nothing was said, which is the entire point.
+  content: z.string().trim().max(2000).default(''),
+  /**
+   * What prompted this call. 'pause' means the room has gone quiet rather than
+   * that someone finished speaking.
+   *
+   * Without it silence could not reach the mediator at all: the client only
+   * called when a transcript completed, so a lull after someone answered
+   * Urushi's question produced no event, and a decision to stay quiet could
+   * never be revisited. People then waited for a turn Urushi did not know it
+   * had been offered.
+   */
+  trigger: z.enum(['utterance', 'pause']).default('utterance'),
+  /** How long the room has been quiet. Only meaningful for a pause. */
+  silenceSeconds: z.number().min(0).max(600).optional(),
   speakerParticipantId: z.string().uuid().optional(),
   diarizationSpeakerLabel: z.string().max(20).optional(),
   speakerConfidence: z.number().min(0).max(1).optional(),
-})
+}).refine(
+  (v) => v.trigger === 'pause' || v.content.length > 0,
+  { message: 'content is required unless this is a pause.', path: ['content'] },
+)
 export type RoomInterveneInput = z.infer<typeof RoomInterveneSchema>
 
 export const RoomAgreementConfirmSchema = z.object({

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Awaitable, Callable
 
 from .api_client import UrushiApiClient
@@ -25,6 +26,12 @@ from .realtime_audio import RealtimeAudioSession
 from .reconnect import get_reconnect_delay
 
 logger = logging.getLogger(__name__)
+
+#: How long the room must be quiet before Urushi is offered the turn. Short
+#: enough to feel like conversation, long enough not to talk over someone
+#: who is simply thinking.
+PAUSE_THRESHOLD_SECONDS = 6.0
+PAUSE_POLL_SECONDS = 1.5
 
 TranscriptHandler = Callable[[str, str | None], Awaitable[None]]
 
@@ -59,6 +66,10 @@ class RoomSession:
         self._opening_text: str | None = None
         self._opening_delivered = False
         self._opening_awaiting_audio = False
+        #: Monotonic time of the last transcript or spoken turn. The pause
+        #: watchdog measures quiet from here.
+        self._last_activity: float = time.monotonic()
+        self._pause_reported_at: float | None = None
 
     @property
     def mediation_handler(self) -> TranscriptHandler | None:
@@ -92,6 +103,7 @@ class RoomSession:
             # so without this a healthy silent session and a dead microphone
             # produce byte-identical logs — which cost real debugging time.
             logger.info("Heard: %s", content)
+            self._last_activity = time.monotonic()
 
             try:
                 decision = await self._api.report_utterance(content, diarization_label)
@@ -99,18 +111,9 @@ class RoomSession:
                 logger.exception("Failed to report utterance to the backend")
                 return
 
-            if decision.action == "LISTEN":
-                logger.info("Urushi [LISTEN] — %s", decision.reasoning)
-                return
-
-            logger.info("Urushi [%s]: %s", decision.action, decision.spoken_text)
-            if decision.action == "END_SESSION":
-                # Mirrors the browser's deliberate hold-to-confirm End Session control —
-                # Urushi SUGGESTING the session is done doesn't end it automatically.
-                logger.info("Urushi suggested ending the session. Press Ctrl+C to end and generate the summary.")
-
-            if decision.spoken_text and self._audio:
-                self._audio.trigger_assistant_response(decision.spoken_text)
+            # Someone spoke, so the quiet clock starts again from here.
+            self._last_activity = time.monotonic()
+            await self._handle_decision(decision)
 
         async def on_assistant_speaking_change(speaking: bool) -> None:
             logger.debug("Assistant speaking: %s", speaking)
@@ -196,6 +199,64 @@ class RoomSession:
             await self._api.confirm_opening(self._opening_text)
             logger.info("Opening delivered and confirmed.")
 
+    async def _handle_decision(self, decision) -> None:  # noqa: ANN001
+        """Acts on one controller decision.
+
+        Shared by the transcript path and the pause watchdog so the two cannot
+        drift apart in how they speak, log, or reset the quiet clock.
+        """
+        if decision.action == "LISTEN":
+            logger.info("Urushi [LISTEN] — %s", decision.reasoning)
+            return
+
+        logger.info("Urushi [%s]: %s", decision.action, decision.spoken_text)
+        if decision.action == "END_SESSION":
+            # Mirrors the browser's deliberate hold-to-confirm End Session control —
+            # Urushi SUGGESTING the session is done doesn't end it automatically.
+            logger.info("Urushi suggested ending the session. Press Ctrl+C to end and generate the summary.")
+
+        if decision.spoken_text and self._audio:
+            self._audio.trigger_assistant_response(decision.spoken_text)
+            # Urushi speaking is activity too: the room should get a chance to
+            # reply before it is offered the turn again.
+            self._last_activity = time.monotonic()
+
+    async def _watch_for_pauses(self) -> None:
+        """Tells the backend when the room goes quiet.
+
+        Transcripts only arrive when somebody finishes speaking, so without this
+        a lull produces no event at all and a decision to stay quiet can never be
+        revisited. Answering a question and then waiting — the ordinary way of
+        handing someone the floor — left Urushi with nothing to react to, and the
+        room sitting in silence.
+
+        Reports a pause once per lull, not repeatedly: the point is to offer the
+        turn, not to nag the backend every few seconds while people think.
+        """
+        while not self._stopping:
+            await asyncio.sleep(PAUSE_POLL_SECONDS)
+
+            if not self._audio or self._stopping:
+                continue
+
+            quiet_for = time.monotonic() - self._last_activity
+            if quiet_for < PAUSE_THRESHOLD_SECONDS:
+                continue
+            # Already offered the turn for this lull.
+            if self._pause_reported_at is not None and self._pause_reported_at >= self._last_activity:
+                continue
+
+            self._pause_reported_at = time.monotonic()
+            try:
+                decision = await self._api.report_pause(quiet_for)
+            except Exception:  # noqa: BLE001 - a failed poll must not kill the session
+                logger.debug("Pause report failed", exc_info=True)
+                continue
+
+            if decision.action != "LISTEN":
+                logger.info("Pause after %.0fs — taking the turn.", quiet_for)
+            await self._handle_decision(decision)
+
     async def wait_until_closed(self) -> str:
         """Blocks until the current connection ends, then returns the reason."""
         assert self._closed_event is not None, "connect() must be called first."
@@ -206,12 +267,16 @@ class RoomSession:
         """Keeps a session alive: reuses an already-open connect()ed session for
         its first cycle, then reconnects (with backoff — see reconnect.py) for
         any drops after that, until stop() is called or attempts are exhausted."""
+        pause_task: asyncio.Task | None = None
+
         while not self._stopping:
             try:
                 if not self._audio:
                     await self.connect()
                 self._reconnect_attempt = 0
                 await self.deliver_opening()
+                if pause_task is None or pause_task.done():
+                    pause_task = asyncio.ensure_future(self._watch_for_pauses())
                 reason = await self.wait_until_closed()
                 if reason:
                     logger.warning("Session ended: %s", reason)

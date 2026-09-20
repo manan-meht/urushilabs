@@ -121,6 +121,30 @@ ${buildSpokenLanguageDirection(ctx.spokenLanguages ?? [])}`
       'it — and carry straight on with the substance in clean language.\n'
     : ''
 
+  // Concrete and computed, rather than "read your own turns and notice".
+  const recent = ctx.recentSpokenActions ?? []
+  const askedTwice = recent.filter((a) => a === 'CLARIFY' || a === 'IDENTIFY_ISSUE' || a === 'INVITE_PARTICIPANT').length >= 2
+  const repetition = recent.length > 0
+    ? `\nYour last spoken turns were: ${recent.join(', ')}.` +
+      (askedTwice
+        ? ' You have already asked them to clarify or confirm more than once. Do NOT ask again — they have ' +
+          'answered, and asking a third time reads as stalling. Use what they gave you: state what you now ' +
+          'understand the issue to be and move to what happens about it, or take a position.'
+        : '') + '\n'
+    : ''
+
+  const turnTaking = ctx.floorIsUrushis
+    ? `\nThe room has gone quiet for ${Math.round(ctx.silenceSeconds ?? 0)} seconds. You spoke last, they ` +
+      'answered you, and now nobody is saying anything — in an ordinary conversation that is your turn, and ' +
+      'they are waiting for you. Say something useful: react to what they actually told you, name what you ' +
+      'are hearing, or ask the ONE question that moves this forward. Choose LISTEN only if speaking would ' +
+      'genuinely interrupt something.\n'
+    : ctx.silenceSeconds !== undefined
+      ? `\nThe room has been quiet for ${Math.round(ctx.silenceSeconds)} seconds, but the last thing said was ` +
+        'not a reply to you. A pause is not by itself a reason to speak — stay quiet unless there is a real ' +
+        'reason.\n'
+      : ''
+
   const addressed = ctx.directlyAddressed
     ? '\nA participant just addressed you directly and asked you to speak. Answer them.\n'
     : ''
@@ -146,7 +170,7 @@ Therefore:
     : ''
 
   const user = `Session phase: ${phase}
-${addressed}${profanityWithdrawn}${attribution}
+${addressed}${turnTaking}${repetition}${profanityWithdrawn}${attribution}
 Topic: ${ctx.topic}
 ${ctx.contextSummary ? `Background: ${ctx.contextSummary}\n` : ''}${ctx.currentIssueTitle ? `Current issue: ${ctx.currentIssueTitle}\n` : ''}
 Recent conversation (oldest first):

@@ -68,3 +68,49 @@ describe('speaker attribution', () => {
     expect(user).not.toContain('cannot tell the speakers apart')
   })
 })
+
+describe('turn-taking', () => {
+  it('tells Urushi the floor is its own after a reply and a pause', () => {
+    // People hand over the floor by answering and then stopping. Urushi had no
+    // model of this, so a participant would finish, wait, and get silence.
+    const { user } = buildInterventionPrompt({ ...baseCtx, floorIsUrushis: true, silenceSeconds: 7 })
+    expect(user).toContain('gone quiet for 7 seconds')
+    expect(user).toContain('that is your turn')
+    expect(user).toContain('they are waiting for you')
+  })
+
+  it('does not treat every pause as an invitation to speak', () => {
+    // A lull that is not a reply to Urushi is just a lull.
+    const { user } = buildInterventionPrompt({ ...baseCtx, floorIsUrushis: false, silenceSeconds: 9 })
+    expect(user).toContain('not a reply to you')
+    expect(user).toContain('A pause is not by itself a reason to speak')
+  })
+
+  it('says nothing about pauses when someone just spoke', () => {
+    const { user } = buildInterventionPrompt(baseCtx)
+    expect(user).not.toContain('gone quiet')
+  })
+})
+
+describe('not repeating itself', () => {
+  it('names what it has already said', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, recentSpokenActions: ['CLARIFY', 'INVITE_PARTICIPANT'] })
+    expect(user).toContain('Your last spoken turns were: CLARIFY, INVITE_PARTICIPANT')
+  })
+
+  it('forbids a third request to clarify', () => {
+    // Observed live: asked a room to confirm the same two issues after they had
+    // confirmed them several times. Telling the model to read its own turns out
+    // of the transcript did not stop it; handing it the list removes the
+    // inference.
+    const { user } = buildInterventionPrompt({ ...baseCtx, recentSpokenActions: ['CLARIFY', 'IDENTIFY_ISSUE'] })
+    expect(user).toContain('Do NOT ask again')
+    expect(user).toContain('reads as stalling')
+  })
+
+  it('does not scold after a single ask', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, recentSpokenActions: ['CLARIFY'] })
+    expect(user).toContain('Your last spoken turns were: CLARIFY')
+    expect(user).not.toContain('Do NOT ask again')
+  })
+})

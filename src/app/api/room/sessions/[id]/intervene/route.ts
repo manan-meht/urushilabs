@@ -54,11 +54,12 @@ export async function POST(
     return NextResponse.json({ errors: parsed.error.flatten().fieldErrors }, { status: 422 })
   }
 
-  const { content, speakerParticipantId, diarizationSpeakerLabel, speakerConfidence } = parsed.data
+  const { content, trigger, silenceSeconds, speakerParticipantId, diarizationSpeakerLabel, speakerConfidence } = parsed.data
+  const isPause = trigger === 'pause'
 
   const db = getServiceClient()
 
-  const [{ data: participants }, { data: recentSegments }, { data: lastIntervention }, { data: currentIssue }] = await Promise.all([
+  const [{ data: participants }, { data: recentSegments }, { data: lastIntervention }, { data: recentSpokenActions }, { data: currentIssue }] = await Promise.all([
     db.from('room_participants').select('*').eq('session_id', id).order('participant_index'),
     db.from('room_transcript_segments').select('*').eq('session_id', id).order('sequence_number', { ascending: false }).limit(RECENT_TRANSCRIPT_WINDOW),
     // Only interventions Urushi actually SPOKE. Every decision is logged here,
@@ -69,6 +70,10 @@ export async function POST(
     // bypass ones (DEESCALATE, END_SESSION) was permanently downgraded to
     // LISTEN, which read as a mediator that had simply decided not to speak.
     db.from('room_interventions').select('triggered_at').eq('session_id', id).not('spoken_text', 'is', null).order('triggered_at', { ascending: false }).limit(1).maybeSingle(),
+    // What Urushi has actually SAID recently. Telling the model to read its own
+    // turns out of the transcript did not stop it asking the same question
+    // repeatedly; handing it the list does not depend on that inference.
+    db.from('room_interventions').select('action').eq('session_id', id).not('spoken_text', 'is', null).order('triggered_at', { ascending: false }).limit(4),
     access.session.current_issue_id
       ? db.from('room_issues').select('title').eq('id', access.session.current_issue_id).single()
       : Promise.resolve({ data: null }),
@@ -89,7 +94,12 @@ export async function POST(
 
   const speakerName = resolveSpeakerName(speakerParticipantId ?? null, diarizationSpeakerLabel ?? null)
 
-  const { data: utteranceSegment, error: segmentError } = await db
+  // A pause is not an utterance. Recording one would put empty turns in the
+  // transcript that the report and the controller would both have to reason
+  // around.
+  const { data: utteranceSegment, error: segmentError } = isPause
+    ? { data: { id: null }, error: null }
+    : await db
     .from('room_transcript_segments')
     .insert({
       session_id: id,
@@ -150,6 +160,15 @@ export async function POST(
   // to describe the problem before the mediator went quiet on them — which is
   // precisely backwards, since that early stretch is when people are still
   // working out what they are even arguing about.
+  // Whose turn is it. Urushi is owed the floor when it spoke last, a participant
+  // has answered since, and the room has now gone quiet — which is exactly the
+  // moment a person would take their turn, and exactly what Urushi previously
+  // had no way of noticing.
+  const lastAssistantIndex = orderedSegments.map((s) => s.role).lastIndexOf('assistant')
+  const answeredSinceUrushiSpoke = lastAssistantIndex >= 0
+    && orderedSegments.slice(lastAssistantIndex + 1).some((s) => s.role === 'participant')
+  const floorIsUrushis = isPause && answeredSinceUrushiSpoke
+
   const participantTurns = orderedSegments.filter((s) => s.role === 'participant').length
   const mediationStarted = Boolean(access.session.current_issue_id) || participantTurns >= SUBSTANTIVE_TURN_COUNT
 
@@ -159,9 +178,14 @@ export async function POST(
     participantNames: participantList.map((p) => p.name),
     currentIssueTitle: currentIssue?.title,
     recentTranscript,
-    latestUtterance: { speakerName, content },
+    latestUtterance: isPause
+      ? { speakerName: 'system', content: '(the room has gone quiet)' }
+      : { speakerName, content },
     secondsSinceLastIntervention,
+    recentSpokenActions: (recentSpokenActions ?? []).map((r) => r.action as string),
     directlyAddressed: detectDirectAddress(content) || profanityJustDisabled,
+    silenceSeconds: isPause ? (silenceSeconds ?? 0) : undefined,
+    floorIsUrushis,
     profanityJustDisabled,
     mediationStarted,
     speakersIdentified,

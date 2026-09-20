@@ -167,6 +167,28 @@ class UrushiApiClient:
             emerging_agreement=decision.get("emergingAgreement"),
         )
 
+    async def report_pause(self, silence_seconds: float) -> InterventionDecision:
+        """Tells the backend the room has gone quiet.
+
+        Silence carries meaning in a conversation — answering someone and then
+        stopping is how you hand them the floor — but it produces no transcript,
+        so without this call the mediator never learns it happened and a
+        participant waits for a turn nobody offered.
+        """
+        data = await self._post("/intervene", {
+            "content": "",
+            "trigger": "pause",
+            "silenceSeconds": round(silence_seconds, 1),
+        })
+        decision = data["decision"]
+        return InterventionDecision(
+            action=decision["action"],
+            reasoning=decision["reasoning"],
+            spoken_text=decision.get("spokenText"),
+            current_issue_title=decision.get("currentIssueTitle"),
+            emerging_agreement=decision.get("emergingAgreement"),
+        )
+
     async def pause(self) -> None:
         await self._post("/pause")
 

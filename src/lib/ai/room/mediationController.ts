@@ -93,6 +93,31 @@ export interface MediationContext {
    * dwelling on it makes an awkward moment bigger than it was.
    */
   profanityJustDisabled?: boolean
+  /**
+   * How long the room has been quiet, when this decision was triggered by a
+   * PAUSE rather than by someone finishing a sentence. Undefined otherwise.
+   */
+  silenceSeconds?: number
+  /**
+   * Urushi spoke last, someone answered, and the room has now gone quiet — so
+   * the floor is Urushi's by ordinary conversational turn-taking.
+   *
+   * People do this without thinking: you answer someone's question, you stop,
+   * and you expect them to speak. Urushi had no model of it, so a participant
+   * would finish, wait, and get nothing — which reads as the device being dead
+   * rather than as a mediator choosing to stay quiet.
+   */
+  floorIsUrushis?: boolean
+  /**
+   * Actions Urushi has actually SPOKEN recently, most recent first.
+   *
+   * Telling the model to read its own turns out of the transcript did not stop
+   * it asking the same thing repeatedly — observed live asking a room to confirm
+   * the same two issues after they had confirmed them several times, which is
+   * how a mediator stops being taken seriously. Handing it the list removes the
+   * inference.
+   */
+  recentSpokenActions?: string[]
 }
 
 export async function decideIntervention(ctx: MediationContext): Promise<InterventionDecision> {
