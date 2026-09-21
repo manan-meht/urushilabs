@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod'
+import type { ConversationSettings } from '@/lib/conversation/settings'
 import { getEnv } from '@/lib/env'
 import { detectEscalationSignal, enforceCooldown, isTrivialUtterance } from './interventionGuardrails'
 import { buildInterventionPrompt } from './interventionPrompt'
@@ -24,6 +25,7 @@ export const InterventionActionSchema = z.enum([
   'CONFIRM_AGREEMENT',
   'MOVE_TO_NEXT_ISSUE',
   'END_SESSION',
+  'GIVE_VERDICT',
 ])
 
 export const InterventionDecisionSchema = z.object({
@@ -42,6 +44,20 @@ export interface RoomTranscriptEntry {
 }
 
 export interface MediationContext {
+  /**
+   * The personality, language and profanity the participants agreed to.
+   *
+   * REQUIRED, with no default, because the optional version of this was the bug.
+   * The persona modules were built, tested and wired into the opening and the
+   * reports — and never reached the intervention controller, which produces
+   * essentially everything Urushi says once mediation is underway. A room that
+   * chose the Straight Shooter got the Diplomat for the entire conversation and
+   * nothing failed; the setting was simply absent from the prompt.
+   *
+   * A required field cannot be forgotten by a future caller the way an optional
+   * one silently was.
+   */
+  settings: ConversationSettings
   topic: string
   contextSummary?: string
   participantNames: string[]
@@ -77,12 +93,6 @@ export interface MediationContext {
    * room's trust faster than one that admits it cannot tell.
    */
   speakersIdentified?: boolean
-  /**
-   * ISO-639-1 codes for the languages spoken in the room, from the session's
-   * transcription config. Decides the register Urushi speaks in — see
-   * spokenLanguage.ts. Empty or English-only means no special direction.
-   */
-  spokenLanguages?: string[]
   /**
    * Someone just asked Urushi to stop swearing and it has been turned off for
    * the session.

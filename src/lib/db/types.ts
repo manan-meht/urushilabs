@@ -164,6 +164,10 @@ export type RoomInterventionAction =
   | 'CONFIRM_AGREEMENT'
   | 'MOVE_TO_NEXT_ISSUE'
   | 'END_SESSION'
+  // Taking a position on who is right. Added because the controller had no verb
+  // for it at all, so a personality built to judge picked the nearest
+  // facilitation action and wrote facilitator text into it.
+  | 'GIVE_VERDICT'
 
 export type RoomTranscriptRole = 'participant' | 'assistant'
 
@@ -299,7 +303,20 @@ export type MeetingStatus =
   | 'cancelled'
 
 /** Same action set as Live Mediation's controller — one mediation engine, multiple transports. */
-export type MeetingInterventionAction = RoomInterventionAction
+/**
+ * Meeting mediation's actions, which are the room's MINUS GIVE_VERDICT.
+ *
+ * Was an alias of RoomInterventionAction until the room gained GIVE_VERDICT and
+ * the typechecker pointed out that the two surfaces had stopped being the same.
+ * meeting_interventions has its own CHECK constraint (migration 009) that does
+ * not permit the new value, so the alias would have type-checked a write the
+ * database rejects at runtime.
+ *
+ * Whether the meeting agent should also take positions is a real product
+ * question, and it needs its own migration and its own testing rather than
+ * arriving as a side effect of a type alias.
+ */
+export type MeetingInterventionAction = Exclude<RoomInterventionAction, 'GIVE_VERDICT'>
 
 export type MeetingTranscriptRole = RoomTranscriptRole
 

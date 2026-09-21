@@ -80,9 +80,19 @@ export function buildLanguageDirection(
  * Earned its place in meeting mode: with a fully-Hindi transcript the model kept
  * replying in English despite the language module above, and moving a one-line
  * reminder to final position took correct switches from 0/6 to 4/6.
+ *
+ * English gets one too. It originally did not, on the reasoning that English is
+ * the default and there is no choice to make — which is true only until the room
+ * speaks something else. A case set to English with participants talking
+ * Hinglish was answered in Hinglish every time, because the pull of the
+ * transcript is just as strong in this direction and nothing in final position
+ * pushed back. The asymmetry, not the wording, was the bug.
  */
 export function buildLanguageReminder(language: ConversationLanguage): string {
-  if (language === 'english') return ''
+  if (language === 'english') {
+    return 'Language check: reply in English, even if the participants are speaking Hindi or Hinglish. ' +
+      'They chose English for your replies. Keep their words as they said them when you quote them.'
+  }
   const name = language === 'hindi' ? 'Hindi' : 'Hinglish'
   return `Language check: reply in conversational ${name}, not English.`
 }

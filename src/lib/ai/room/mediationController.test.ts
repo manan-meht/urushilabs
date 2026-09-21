@@ -4,8 +4,10 @@ const mockGetEnv = vi.fn()
 vi.mock('@/lib/env', () => ({ getEnv: () => mockGetEnv() }))
 
 import { decideIntervention, type MediationContext } from './mediationController'
+import { normalizeConversationSettings } from '@/lib/conversation/settings'
 
 const baseCtx: MediationContext = {
+  settings: normalizeConversationSettings({}),
   topic: 'Division of responsibilities',
   participantNames: ['Manan', 'Sonam'],
   recentTranscript: [],

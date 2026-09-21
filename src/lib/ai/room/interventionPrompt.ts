@@ -6,10 +6,14 @@
  */
 
 import type { RoomInterventionAction } from '@/lib/db/types'
+import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
 import type { MediationContext } from './mediationController'
-import { buildSpokenLanguageDirection } from './spokenLanguage'
 
-export const INTERVENTION_PROMPT_VERSION = '1.0'
+// 1.1: the agreed personality, language and profanity now reach this prompt at
+// all. Before it, every intervention was generated from the controller rules
+// alone, so the three settings participants chose and agreed to governed the
+// opening line and the final report but not one word of the mediation itself.
+export const INTERVENTION_PROMPT_VERSION = '1.1'
 
 const ACTIONS: RoomInterventionAction[] = [
   'LISTEN',
@@ -23,10 +27,19 @@ const ACTIONS: RoomInterventionAction[] = [
   'CONFIRM_AGREEMENT',
   'MOVE_TO_NEXT_ISSUE',
   'END_SESSION',
+  'GIVE_VERDICT',
 ]
 
 export function buildInterventionPrompt(ctx: MediationContext): { system: string; user: string } {
-  const system = `You are the intervention controller for Urushi, an AI mediator listening to a live, in-person conversation between ${ctx.participantNames.length} people: ${ctx.participantNames.join(', ')}.
+  const system = `${buildMediatorPersona(ctx.settings, { written: false })}
+
+---
+
+Everything above is WHO you are: the manner, the language and the register the
+participants chose and agreed to. It governs every word you put in "spokenText".
+Everything below is WHEN to use it.
+
+You are the intervention controller for Urushi, an AI mediator listening to a live, in-person conversation between ${ctx.participantNames.length} people: ${ctx.participantNames.join(', ')}.
 
 # Your one job
 Decide whether Urushi should speak right now, and if so, what to say. You are NOT the mediator's voice — you are the judgment layer that decides whether the mediator's voice is needed at all.
@@ -55,6 +68,26 @@ Do NOT intervene just because:
 - You merely have something interesting to add — that alone is not a reason to speak
 
 When in doubt, choose LISTEN.
+
+# GIVE_VERDICT — saying who is right
+Use it when the conversation contains enough for you to take a position on a
+specific point of disagreement, and say so: whose account the rest of the
+conversation supports, and why, citing what was actually said.
+
+It is about ONE concrete point, not the whole dispute. "You agreed to Friday and
+moved it without telling her — on that, she's right" is a verdict. "You both have
+valid perspectives" is not a verdict, it is the absence of one.
+
+Use it rather than dressing a judgement up as something else. If what you want to
+say is "he's right about this", that is GIVE_VERDICT — not an IDENTIFY_ISSUE
+whose title is really a ruling, and not a CLARIFY that asks a question you
+already know the answer to.
+
+Do NOT use it to assign blame for the dispute as a whole, to moralise, or to
+judge someone's character. You are judging a claim, never a person.
+
+How readily you reach for this is set by your manner, above. Take it seriously:
+a view you are keeping to yourself is worth nothing to the room.
 
 # Two exceptions to listening by default
 
@@ -128,8 +161,7 @@ answer. "Could you both tell me more?" is not.
   "currentIssueTitle": "Short label for the issue currently being discussed, if identifiable",
   "emergingAgreement": "Short plain-language statement of a possible agreement, only if one seems to be forming"
 }
-
-${buildSpokenLanguageDirection(ctx.spokenLanguages ?? [])}`
+`
 
   const transcriptLines = ctx.recentTranscript
     .map((t) => `${t.speakerName}: ${t.content}`)
@@ -223,6 +255,35 @@ Therefore:
 `
     : ''
 
+  // The one-line language reminder, and then the conditional imperatives, come
+  // LAST. Everything the model must not forget has had to be moved here at some
+  // point: language switching went from 0/6 to 4/6 on the move alone, and three
+  // separate mid-prompt rules about answering a challenge produced three
+  // different evasions before the same move fixed it.
+  const languageReminder = buildPersonaLanguageReminder(ctx.settings)
+
+  // Previously assembled with a leftover string-concatenation from an earlier
+  // refactor, so the text that actually reached the model read
+  // `...whose position is stronger " + "and why...`. The single most important
+  // instruction in the prompt was being delivered as garbled fragments, which is
+  // a large part of why it never held.
+  const verdictImperative = ctx.askedForVerdict
+    ? '\n\nTHEY HAVE ASKED YOU WHO IS RIGHT. Answer it, with action GIVE_VERDICT. Either say plainly whose position is stronger and ' +
+      'why, citing what they actually said, or — if the conversation genuinely does not contain enough to ' +
+      'judge — name the ONE specific fact that would settle it, as a question they can answer in a sentence. ' +
+      'Do NOT ask them to explain in more detail, share more context, or elaborate: that is not withholding ' +
+      'judgement, it is avoiding it, and it is what they are complaining about.'
+    : ''
+
+  const challengeImperative = ctx.challengedByParticipant
+    ? '\n\nTHIS IS A COMPLAINT ABOUT YOU. Answer it directly, in your very next sentence. Find the specific ' +
+      'thing they say you missed — look back through what the other person said and has not been challenged ' +
+      '— and challenge it now, by name, quoting their words. Do NOT de-escalate. Do NOT suggest a break. Do ' +
+      'NOT ask for more information, more detail, or whether there are other issues: they have told you what ' +
+      'is wrong, and asking them to explain it again is the evasion they are complaining about. If you truly ' +
+      'think they are wrong, say so and say why, in one sentence.'
+    : ''
+
   const user = `Session phase: ${phase}
 ${addressed}${turnTaking}${repetition}${profanityWithdrawn}${attribution}
 Topic: ${ctx.topic}
@@ -231,18 +292,9 @@ Recent conversation (oldest first):
 ${transcriptLines || '(no prior conversation yet)'}
 
 Most recent utterance:
-${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}${ctx.askedForVerdict ? `\n\nTHEY HAVE ASKED YOU WHO IS RIGHT. Answer it. Either say plainly whose position is stronger " +
-    "and why, citing what they actually said, or — if the conversation genuinely does not contain enough to " +
-    "judge — name the ONE specific fact that would settle it, as a question they can answer in a sentence. " +
-    "Do NOT ask them to explain in more detail, share more context, or elaborate: that is not withholding " +
-    "judgement, it is avoiding it, and it is what they are complaining about.` : ''}${ctx.challengedByParticipant ? `\n\nTHIS IS A COMPLAINT ABOUT YOU. Answer it directly, in your very next sentence. " +
-    "Find the specific thing they say you missed — look back through what the other person said and has not " +
-    "been challenged — and challenge it now, by name, quoting their words. Do NOT de-escalate. Do NOT suggest " +
-    "a break. Do NOT ask for more information, more detail, or whether there are other issues: they have told " +
-    "you what is wrong and asking them to explain it again is the evasion they are complaining about. If you " +
-    "truly think they are wrong, say so and say why, in one sentence.` : ''}
+${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}
 
-It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.`
+It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${languageReminder ? `\n\n${languageReminder}` : ''}${verdictImperative}${challengeImperative}`
 
   return { system, user }
 }

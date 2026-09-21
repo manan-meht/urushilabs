@@ -5,7 +5,7 @@ import { RoomInterveneSchema } from '@/lib/validation/schemas'
 import { decideIntervention, type RoomTranscriptEntry } from '@/lib/ai/room/mediationController'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
 import { detectMediatorChallenge, detectVerdictRequest } from '@/lib/ai/room/mediatorChallenge'
-import { getRealtimeConfig } from '@/lib/ai/realtime/config'
+import { findMatchingIssue } from '@/lib/ai/room/issueMatching'
 import { getConversationSettings } from '@/lib/conversation/getSettings'
 import { detectProfanityObjection } from '@/lib/conversation/profanityObjection'
 import { disableProfanity } from '@/lib/conversation/acceptance'
@@ -174,6 +174,10 @@ export async function POST(
   const mediationStarted = Boolean(access.session.current_issue_id) || participantTurns >= SUBSTANTIVE_TURN_COUNT
 
   const decision = await decideIntervention({
+    // Already resolved above for the profanity-objection check, and until now
+    // never passed any further — so the personality and language the room agreed
+    // to shaped nothing the room actually heard.
+    settings: conversationSettings,
     topic: access.session.topic,
     contextSummary: access.session.context_summary ?? undefined,
     participantNames: participantList.map((p) => p.name),
@@ -195,8 +199,6 @@ export async function POST(
     profanityJustDisabled,
     mediationStarted,
     speakersIdentified,
-    // Urushi speaks the room's language, in the room's register — see spokenLanguage.ts.
-    spokenLanguages: getRealtimeConfig().transcribeLanguages,
   })
 
   const { data: interventionRow, error: interventionError } = await db
@@ -229,11 +231,10 @@ export async function POST(
     // accumulated four rows for one dispute — three with identical titles, one
     // of them marked agreed while a different one was "current". The final
     // report is built from these, so the duplicates are not cosmetic.
-    const normalized = decision.currentIssueTitle.trim().toLowerCase()
-    const existing = (existingIssues ?? []).find((i) => {
-      const other = String(i.title).trim().toLowerCase()
-      return other === normalized || other.includes(normalized) || normalized.includes(other)
-    })
+    const existing = findMatchingIssue(
+      decision.currentIssueTitle,
+      (existingIssues ?? []).map((i) => ({ id: i.id as string, title: String(i.title) }))
+    )
 
     if (existing) {
       newIssueId = existing.id

@@ -200,12 +200,20 @@ describe('records never carry strong language', () => {
 })
 
 describe('buildPersonaLanguageReminder', () => {
-  it('is empty for English and present otherwise', () => {
+  it('names the chosen language for every language, including English', () => {
     // Final-position reminder: in meeting mode, moving this to the end took
     // correct language switches from 0/6 to 4/6.
-    expect(buildPersonaLanguageReminder(settings({ language: 'english' }))).toBe('')
     expect(buildPersonaLanguageReminder(settings({ language: 'hindi' }))).toContain('Hindi')
     expect(buildPersonaLanguageReminder(settings({ language: 'hinglish' }))).toContain('Hinglish')
+
+    // English used to return '' on the reasoning that it is the default and
+    // there is nothing to switch to. That holds right up until the room speaks
+    // Hinglish, at which point the model followed the transcript and answered in
+    // Hinglish every time — with nothing in final position pushing back, because
+    // English was the one language that got no reminder.
+    const english = buildPersonaLanguageReminder(settings({ language: 'english' }))
+    expect(english).toContain('English')
+    expect(english).toMatch(/Hindi or Hinglish/)
   })
 })
 

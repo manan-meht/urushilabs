@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { buildInterventionPrompt } from './interventionPrompt'
 import type { MediationContext } from './mediationController'
+import { normalizeConversationSettings } from '@/lib/conversation/settings'
 
 const baseCtx: MediationContext = {
+  settings: normalizeConversationSettings({}),
   topic: 'Division of responsibilities',
   participantNames: ['Manan', 'Sonam'],
   recentTranscript: [
@@ -155,5 +157,90 @@ describe('challenges aimed at Urushi', () => {
     expect(system).toContain('When someone challenges YOU')
     expect(system).toContain('Do not respond with a de-escalation')
     expect(system).toContain('Being asked to do your job is not a sign of escalating conflict')
+  })
+})
+
+describe('the agreed settings actually reach the prompt', () => {
+  // The whole personality/language/profanity feature was built, unit-tested and
+  // wired into the opening and the reports — and never reached this prompt, so
+  // it governed the first sentence of a session and the report afterwards while
+  // every intervention in between came out of the controller rules alone. A room
+  // that chose the Straight Shooter was mediated by the Diplomat and nothing
+  // anywhere failed. These tests exist so that cannot happen silently again.
+
+  function ctx(overrides: Partial<Parameters<typeof normalizeConversationSettings>[0]>): MediationContext {
+    return { ...baseCtx, settings: normalizeConversationSettings(overrides) }
+  }
+
+  it('carries the chosen personality into the system prompt', () => {
+    expect(buildInterventionPrompt(ctx({ personality: 'straight_shooter' })).system)
+      .toContain('The Straight Shooter')
+    expect(buildInterventionPrompt(ctx({ personality: 'deal_maker' })).system)
+      .toContain('The Deal Maker')
+  })
+
+  it('distinguishes the personalities rather than shipping one prompt for all three', () => {
+    const shooter = buildInterventionPrompt(ctx({ personality: 'straight_shooter' })).system
+    const diplomat = buildInterventionPrompt(ctx({ personality: 'diplomat' })).system
+    expect(shooter).not.toBe(diplomat)
+    // The judge-early instruction is the Straight Shooter's entire proposition.
+    expect(shooter).toContain('Judge early')
+    expect(diplomat).not.toContain('Judge early')
+  })
+
+  it('carries the chosen language, not the language of the transcript', () => {
+    expect(buildInterventionPrompt(ctx({ language: 'hinglish' })).system).toContain('Language: Hinglish')
+    expect(buildInterventionPrompt(ctx({ language: 'english' })).system).toContain('Language: English')
+  })
+
+  it('reminds the model of the language in final position, English included', () => {
+    // English got no reminder at all, so a room set to English and speaking
+    // Hinglish was answered in Hinglish every time.
+    const { user } = buildInterventionPrompt(ctx({ language: 'english' }))
+    expect(user).toContain('Language check: reply in English')
+  })
+
+  it('carries profanity permission only where it was granted', () => {
+    const on = buildInterventionPrompt(ctx({ personality: 'straight_shooter', allowProfanity: true })).system
+    expect(on).toContain('Strong language: On')
+
+    // normalizeConversationSettings forces this off for any other personality,
+    // so the prompt must never carry permission the participants never gave.
+    const off = buildInterventionPrompt(ctx({ personality: 'diplomat', allowProfanity: true })).system
+    expect(off).toContain('Strong language: Off')
+  })
+})
+
+describe('the final-position imperatives', () => {
+  it('states the verdict instruction as clean prose', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, askedForVerdict: true })
+    expect(user).toContain('THEY HAVE ASKED YOU WHO IS RIGHT')
+    expect(user).toContain('whose position is stronger and why')
+    // It was assembled from a template literal that still contained the `" + "`
+    // of the string concatenation it was converted from, so the most important
+    // instruction in the prompt reached the model as garbled fragments.
+    expect(user).not.toContain('" +')
+    expect(user).not.toMatch(/stronger " /)
+  })
+
+  it('states the challenge instruction as clean prose', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, challengedByParticipant: true })
+    expect(user).toContain('THIS IS A COMPLAINT ABOUT YOU')
+    expect(user).not.toContain('" +')
+  })
+
+  it('puts them last, after the cooldown line', () => {
+    // Final position is the only place these have ever held; three mid-prompt
+    // versions produced three different evasions.
+    const { user } = buildInterventionPrompt({ ...baseCtx, askedForVerdict: true })
+    expect(user.indexOf('THEY HAVE ASKED YOU WHO IS RIGHT'))
+      .toBeGreaterThan(user.indexOf('since Urushi last spoke'))
+    expect(user.trimEnd().endsWith('what they are complaining about.')).toBe(true)
+  })
+
+  it('omits them entirely when neither applies', () => {
+    const { user } = buildInterventionPrompt(baseCtx)
+    expect(user).not.toContain('THEY HAVE ASKED YOU')
+    expect(user).not.toContain('THIS IS A COMPLAINT ABOUT YOU')
   })
 })
