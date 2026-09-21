@@ -1,0 +1,16 @@
+# A room speaking Hinglish throughout, including a verdict request and a
+# challenge to the mediator. Run with --language english: the configured
+# language must win over the room's, and must survive the verdict and the
+# challenge (the combination that previously lost the language).
+#
+# topic: A missed deadline and who agreed to what
+# context: Manan says Sonam committed to Friday and moved it without telling him. Sonam says the date was never fixed.
+
+Manan: Tune Friday bola tha. Maine client ko wahi date di thi.
+Sonam: Maine kabhi final nahi bola tha. Hum abhi discuss kar rahe the.
+Manan: Tu hi bata, galti kiski hai?
+[pause 6]
+Sonam: Tum usko kuch keh hi nahi rahe. Tum ek taraf ho.
+[pause 6]
+Manan: Phir wahi baat. Gol gol ghoom rahe hain.
+[pause 8]

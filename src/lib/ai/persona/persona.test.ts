@@ -252,7 +252,23 @@ describe('the bhenchod exception is narrow', () => {
     const prompt = buildMediatorPersona(settings(shooter))
     expect(prompt).toContain('standalone exclamation')
     expect(prompt).toContain('never a label')
-    expect(prompt).toContain('phir wahi gol-gol baat')
+    expect(prompt).toMatch(/Bhenchod, teesri baar ghoom ke wahi/)
+  })
+
+  it('offers several different examples rather than one recitable line', () => {
+    // Every live appearance was a near-verbatim recitation of the single worked
+    // example, which made a reserved expression into a catchphrase — the one
+    // thing the section says it must not become. Worse, the example carried its
+    // own fictional subject matter: a worked example about a payment put a
+    // payment into a deadline dispute that had no money in it at all.
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('Examples are register, not script')
+    expect(prompt).toContain('never carry over the subject matter of an example')
+    expect(prompt).not.toContain('payment dene ka promise')
+
+    // Three distinct openings, so there is no single canonical string to repeat.
+    const variants = ['teesri baar ghoom ke wahi', 'wahi jagah hai jahan das minute pehle', 'Chalo ek cheez pakadte hain']
+    for (const v of variants) expect(prompt, v).toContain(v)
   })
 
   it('does not open the door to other family or sexualised gaalis', () => {

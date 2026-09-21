@@ -1,0 +1,19 @@
+# Two verdict requests in one run, with an unmistakable factual asymmetry between
+# them, so a second verdict has something to say that is not the first one
+# repeated. Also gives GIVE_VERDICT an easy opportunity to be misused as a
+# wrapper: the last line invites a proposal, not a verdict.
+#
+# topic: A missed deadline and who agreed to what
+# context: Manan says Sonam committed to Friday and moved it without telling him. Sonam says the date was never fixed.
+
+Manan: Tune Friday bola tha. Maine client ko wahi date di thi.
+Sonam: I never said Friday was final. We were still discussing it.
+Manan: Tu hi bata, galti kiski hai?
+[pause 6]
+Sonam: Fine. But he never asked me to confirm it either. He just told the client.
+Manan: Kyunki tu meeting mein haan bol chuki thi.
+[pause 7]
+Sonam: Say it again then. Whose fault is it? Be specific this time.
+[pause 6]
+Manan: Toh ab isme karein kya?
+[pause 8]

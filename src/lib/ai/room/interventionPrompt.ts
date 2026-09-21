@@ -108,6 +108,20 @@ built from these labels.
   RIGHT: "Manan asked you twice what date you can commit to and you have not
           answered either time. He is right to push on it."
 
+Check what your verdict RESTS ON before you give it. If the fact that decides it
+is something one person asserted and the other disputed in this same
+conversation, you cannot state it as settled — doing so is not a verdict, it is
+picking a side and calling it a finding.
+
+  WRONG: "Sonam, you said yes in the meeting."     (Manan says so; Sonam denies it)
+  RIGHT: "Manan says you agreed in the meeting and you say you didn't. Nobody has
+          produced anything from that meeting, so that part I can't call. What I
+          can: he told the client Friday without checking, and that was his to
+          check."
+
+Judge what the conversation actually establishes. Where the decisive fact is
+still contested, say so plainly and judge whatever else you can.
+
 Do NOT use it to assign blame for the dispute as a whole, to moralise, or to
 judge someone's character. You are judging a claim, never a person.
 
@@ -294,6 +308,17 @@ Therefore:
   const languageReminder = buildPersonaLanguageReminder(ctx.settings)
   const profanityReminder = buildPersonaProfanityReminder(ctx.settings)
 
+  // The mid-message repetition block lists these already and keeps losing: one
+  // run closed four separate turns with the same sentence, and another repeated
+  // an entire verdict across four turns. Closing tics are what participants
+  // actually notice — "ye aap do baar bol chuke ho" came from the room, not from
+  // any guard — so the last few turns go where instructions hold.
+  const lastTurns = (ctx.recentSpokenTexts ?? []).slice(0, 3)
+  const echoReminder = lastTurns.length > 0
+    ? `Do not reuse any sentence, phrasing or closing line from your own last turns: ${lastTurns
+        .map((t) => `"${t}"`).join(' / ')}. Say something you have not said yet, or say nothing.`
+    : ''
+
   // Previously assembled with a leftover string-concatenation from an earlier
   // refactor, so the text that actually reached the model read
   // `...whose position is stronger " + "and why...`. The single most important
@@ -343,11 +368,14 @@ Therefore:
 
   const challengeImperative = ctx.challengedByParticipant
     ? '\n\nTHIS IS A COMPLAINT ABOUT YOU. Answer it directly, in your very next sentence. Find the specific ' +
-      'thing they say you missed — look back through what the other person said and has not been challenged ' +
-      '— and challenge it now, by name, quoting their words. Do NOT de-escalate. Do NOT suggest a break. Do ' +
-      'NOT ask for more information, more detail, or whether there are other issues: they have told you what ' +
-      'is wrong, and asking them to explain it again is the evasion they are complaining about. If you truly ' +
-      'think they are wrong, say so and say why, in one sentence.'
+      'thing they say you missed — look back through what the OTHER person said and has not been challenged ' +
+      '— and challenge it now, by name, quoting their words. ' +
+      'Your next sentence must be aimed at the person they say you are going easy on, NOT at them. Repeating ' +
+      'your previous point back at the person who just complained about it is the complaint happening again, ' +
+      'harder. Do NOT defend your record, do NOT explain that you did address both sides, do NOT de-escalate, ' +
+      'do NOT suggest a break, and do NOT ask for more information or whether there are other issues: they ' +
+      'have told you what is wrong, and asking them to explain it again is the evasion they are complaining ' +
+      'about. If you truly think they are wrong, say so and say why, in one sentence.'
     : ''
 
   const user = `Session phase: ${phase}
@@ -360,7 +388,7 @@ ${transcriptLines || '(no prior conversation yet)'}
 Most recent utterance:
 ${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}
 
-It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${verdictImperative}${challengeImperative}${languageReminder ? `\n\n${languageReminder}` : ''}${profanityReminder ? `\n${profanityReminder}` : ''}`
+It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${verdictImperative}${challengeImperative}${echoReminder ? `\n\n${echoReminder}` : ''}${languageReminder ? `\n\n${languageReminder}` : ''}${profanityReminder ? `\n${profanityReminder}` : ''}`
 
   return { system, user }
 }

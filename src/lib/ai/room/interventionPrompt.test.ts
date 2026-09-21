@@ -293,3 +293,21 @@ describe('the final-position imperatives', () => {
     expect(user).not.toContain('THIS IS A COMPLAINT ABOUT YOU')
   })
 })
+
+describe('the echo guard', () => {
+  it('lists recent turns at the end, where instructions hold', () => {
+    // The mid-message repetition block already named these and lost: one run
+    // closed four separate turns with the same sentence.
+    const { user } = buildInterventionPrompt({
+      ...baseCtx,
+      recentSpokenTexts: ['Ab aage kaise proceed karna hai, uspe focus karte hain.'],
+    })
+    const echo = user.lastIndexOf('Do not reuse any sentence')
+    expect(echo).toBeGreaterThan(user.indexOf('since Urushi last spoke'))
+    expect(user.slice(echo)).toContain('uspe focus karte hain')
+  })
+
+  it('says nothing when there are no previous turns to echo', () => {
+    expect(buildInterventionPrompt(baseCtx).user).not.toContain('Do not reuse any sentence')
+  })
+})
