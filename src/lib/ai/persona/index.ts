@@ -16,12 +16,12 @@ import type { ConversationSettings } from '@/lib/conversation/settings'
 import { MEDIATOR_FOUNDATION, PERSONA_FOUNDATION_VERSION } from './foundation'
 import { PERSONALITY_MODULES } from './personalities'
 import { buildLanguageDirection, buildLanguageReminder } from './language'
-import { buildProfanityDirection } from './profanity'
+import { buildProfanityDirection, buildProfanityReminder } from './profanity'
 
 export { MEDIATOR_FOUNDATION, PERSONA_FOUNDATION_VERSION } from './foundation'
 export { PERSONALITY_MODULES } from './personalities'
 export { buildLanguageDirection, buildLanguageReminder } from './language'
-export { buildProfanityDirection, PROFANITY_OFF, PROFANITY_ON } from './profanity'
+export { buildProfanityDirection, buildProfanityReminder, PROFANITY_OFF, PROFANITY_ON } from './profanity'
 
 export const MEDIATOR_PERSONA_VERSION = `${PERSONA_FOUNDATION_VERSION}`
 
@@ -81,4 +81,19 @@ export function buildMediatorPersona(
  */
 export function buildPersonaLanguageReminder(settings: ConversationSettings): string {
   return buildLanguageReminder(settings.language)
+}
+
+/**
+ * The final-position register reminder, for callers that have the profanity
+ * setting on. Empty when strong language is off or this is a record, so callers
+ * can append it unconditionally.
+ */
+export function buildPersonaProfanityReminder(
+  settings: ConversationSettings,
+  opts: PersonaOptions = {}
+): string {
+  return buildProfanityReminder(settings.allowProfanity, {
+    record: opts.record === true,
+    language: settings.language,
+  })
 }

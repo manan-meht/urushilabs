@@ -6,7 +6,11 @@
  */
 
 import type { RoomInterventionAction } from '@/lib/db/types'
-import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
+import {
+  buildMediatorPersona,
+  buildPersonaLanguageReminder,
+  buildPersonaProfanityReminder,
+} from '@/lib/ai/persona'
 import type { MediationContext } from './mediationController'
 
 // 1.1: the agreed personality, language and profanity now reach this prompt at
@@ -288,6 +292,7 @@ Therefore:
   // three of four replies in a Hinglish room came back in English, because the
   // reminder was buried under a paragraph shouting about the challenge.
   const languageReminder = buildPersonaLanguageReminder(ctx.settings)
+  const profanityReminder = buildPersonaProfanityReminder(ctx.settings)
 
   // Previously assembled with a leftover string-concatenation from an earlier
   // refactor, so the text that actually reached the model read
@@ -355,7 +360,7 @@ ${transcriptLines || '(no prior conversation yet)'}
 Most recent utterance:
 ${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}
 
-It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${verdictImperative}${challengeImperative}${languageReminder ? `\n\n${languageReminder}` : ''}`
+It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${verdictImperative}${challengeImperative}${languageReminder ? `\n\n${languageReminder}` : ''}${profanityReminder ? `\n${profanityReminder}` : ''}`
 
   return { system, user }
 }

@@ -111,10 +111,38 @@ describe('buildMediatorPersona — strong language', () => {
     // The previous version made a specific word MANDATORY whenever Urushi called
     // something out, which produced a mediator that swore on cue rather than
     // when it meant it.
+    //
+    // Note this is about VOCABULARY, not frequency. Swearing is now expected on
+    // most turns, but no individual word is ever required — the two are
+    // independent, and conflating them is what produced the on-cue mediator.
     const prompt = buildMediatorPersona(settings(shooter))
     expect(prompt).not.toContain('REQUIREMENT, not a suggestion')
     expect(prompt).not.toMatch(/MUST contain/i)
-    expect(prompt).toContain('not a quota to fill')
+    expect(prompt).toContain('not a checklist, not a required vocabulary')
+  })
+
+  it('makes the ordinary register the default rather than an earned escalation', () => {
+    // Told escalation was earned and that most turns needed nothing stronger,
+    // the mediator swore exactly zero times across a deliberately escalated
+    // argument with the setting enabled and accepted — participants agreed to a
+    // register they then never heard.
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('This is your NORMAL register')
+    expect(prompt).toContain('Most of your turns should carry it')
+    expect(prompt).toContain('Do not save it up')
+  })
+
+  it('keeps the target rule explicitly independent of frequency', () => {
+    // The one thing that must not relax as frequency goes up.
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('Frequency is not the constraint')
+    expect(prompt).toContain('Swearing MORE does not mean softening this line')
+  })
+
+  it('still drops everything during distress', () => {
+    const prompt = buildMediatorPersona(settings(shooter))
+    expect(prompt).toContain('including the ordinary register')
+    expect(prompt).toContain('distress, fear, coercion or abuse')
   })
 
   it('treats the example words as register, not as a vocabulary', () => {

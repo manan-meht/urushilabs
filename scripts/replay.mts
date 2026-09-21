@@ -17,6 +17,7 @@
  *   npx vite-node scripts/replay.mts scripts/conversations/workload.txt
  *   npx vite-node scripts/replay.mts <file> --personality diplomat
  *   npx vite-node scripts/replay.mts <file> --pace 20     # slower conversation
+ *   npx vite-node scripts/replay.mts <file> --delay 9000  # stay under the TPM limit
  *   npx vite-node scripts/replay.mts <file> --profanity --base https://urushilabs.com
  *
  * Script format — one line per event, read like a transcript:
@@ -57,7 +58,7 @@ function flag(name: string): string | undefined {
 }
 
 if (!scriptPath) {
-  console.error('usage: vite-node scripts/replay.mts <conversation-file> [--personality X] [--language X] [--profanity] [--pace N] [--base URL] [--keep]')
+  console.error('usage: vite-node scripts/replay.mts <conversation-file> [--personality X] [--language X] [--profanity] [--pace N] [--delay MS] [--base URL] [--keep]')
   process.exit(2)
 }
 
@@ -76,6 +77,18 @@ const ALLOW_PROFANITY = argv.includes('--profanity')
  */
 const PACE = Number(flag('pace') ?? 12)
 const KEEP = argv.includes('--keep')
+/**
+ * Milliseconds to wait between calls, to stay under the OpenAI tokens-per-minute
+ * ceiling.
+ *
+ * Separate from --pace, which moves the cooldown clock and costs no real time.
+ * The system prompt runs 4-6k tokens, so at a 30k TPM limit roughly five calls
+ * per minute get through and the rest come back 429 — which the endpoint used to
+ * turn into a lost turn, and which makes a replay look like a mediator that went
+ * quiet. Throttling here keeps a test measuring the mediator rather than the
+ * rate limiter.
+ */
+const DELAY_MS = Number(flag('delay') ?? 0)
 
 // ─── env ─────────────────────────────────────────────────────────────────────
 
@@ -259,6 +272,8 @@ async function main() {
     const body = step.kind === 'pause'
       ? { content: '', trigger: 'pause', silenceSeconds: step.seconds }
       : { content: step.text, trigger: 'utterance', speakerParticipantId: idByName.get(step.speaker!) }
+
+    if (DELAY_MS > 0) await new Promise((r) => setTimeout(r, DELAY_MS))
 
     const res = await fetch(`${BASE}/api/room/sessions/${sessionId}/intervene`, {
       method: 'POST',
