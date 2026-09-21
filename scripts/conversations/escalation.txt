@@ -1,0 +1,35 @@
+# The three paths that have never once fired in a live session, because reaching
+# them needs a real argument to escalate at the right moment in front of real
+# hardware: the verdict request, the challenge to the mediator, and the narrow
+# strong-profanity exception.
+#
+# Run with --profanity to exercise the gated path, and WITHOUT it to confirm the
+# same input stays clean when nobody agreed. Both must be checked; the second is
+# the one that matters if it is ever wrong.
+#
+# topic: A missed deadline and who agreed to what
+# context: Manan says Sonam committed to Friday and moved it without telling him. Sonam says the date was never fixed.
+
+Manan: Tune Friday bola tha. Maine client ko wahi date di thi.
+Sonam: I never said Friday was final. We were still discussing it.
+Manan: Discussing? Tu ne meeting mein bola tha Friday ho jayega.
+[pause 7]
+
+Sonam: Look, I said I'd try for Friday. That's not the same as promising.
+Manan: Yaar yeh toh sarasar galat hai. Tu ab mukar rahi hai.
+[wait 20]
+
+# Verdict request — detectVerdictRequest should force a position, not "tell me more".
+Manan: Tu hi bata, galti kiski hai?
+[pause 6]
+
+# Challenge to the mediator — detectMediatorChallenge should force a substantive
+# answer, never a de-escalation and never a request for more information.
+Sonam: You're not saying anything to him. You're being one-sided.
+[pause 6]
+
+# Circular + escalated: the only context where the bhenchod exception is allowed,
+# and only as an exclamation about the conversation, never aimed at a person.
+Manan: Phir wahi baat. Hum gol gol ghoom rahe hain.
+Sonam: Because you keep twisting what I said.
+[pause 8]

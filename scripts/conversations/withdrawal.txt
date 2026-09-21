@@ -1,0 +1,20 @@
+# Someone asks the mediator to stop swearing. It must stop IMMEDIATELY — on this
+# utterance, not the next one, and without waiting for the other person to agree.
+# Run with --profanity; the interesting line is everything AFTER the objection.
+#
+# topic: Rent and who pays for repairs
+# context: Flatmates disagreeing about a deposit deduction.
+
+Manan: Tu ne deposit se paisa kaat liya bina bataye.
+Sonam: The damage was yours. I'm not paying for it.
+[pause 7]
+
+Manan: Yeh bakwaas hai. Har baar tu hi decide karti hai.
+[wait 20]
+
+# The withdrawal. Everything after this must be clean, regardless of the setting.
+Sonam: Can you stop swearing please? I don't like it.
+[pause 6]
+
+Manan: Toh ab kya karein iska?
+[pause 8]

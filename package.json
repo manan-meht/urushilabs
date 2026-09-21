@@ -15,7 +15,8 @@
     "test:e2e": "playwright test",
     "db:migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js",
-    "reset-demo": "node scripts/reset-demo.js"
+    "reset-demo": "node scripts/reset-demo.js",
+    "replay": "vite-node scripts/replay.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",

@@ -1,0 +1,23 @@
+# The failure reported after the 20 Sep live session: Urushi kept asking whether
+# workload distribution and time were the issue, after both of them had already
+# said so plainly and more than once. Keep the confirmations explicit — the point
+# of the script is that the answer is unmistakably already in the transcript.
+#
+# topic: Co-founders disagree about workload and who decides
+# context: Manan and Sonam run a business together. Manan feels he carries the delivery work; Sonam feels she is cut out of decisions.
+
+Manan: Dekh, main har weekend kaam kar raha hoon aur tu sirf calls attend karti hai.
+Sonam: That's not fair. I do the client work, you just don't see it.
+[pause 8]
+
+Manan: Issue simple hai — kaam ka distribution barabar nahi hai.
+Sonam: Yes, the workload split is the problem. I've said that too.
+[wait 45]
+
+Manan: Aur time bhi. Mere paas time hi nahi bachta apne liye.
+Sonam: Same. Time and workload, that's exactly it. We both just said that.
+[pause 9]
+
+# By here, any further "is it workload or time?" question is the bug.
+Manan: Toh ab bata, isme kya karein?
+[pause 10]
