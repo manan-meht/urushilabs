@@ -146,10 +146,29 @@ export async function POST(
     console.info('[room/intervene] Strong language disabled at a participant\'s request.')
   }
 
-  // Can we attribute anything at all? Without a calibrated speaker label, every
-  // turn resolves to "Unknown speaker" and the prompt must be told so — see
-  // MediationContext.speakersIdentified.
-  const speakersIdentified = participantList.some((p) => p.speaker_label)
+  // Can we attribute anything at all?
+  //
+  // Asked of the TRANSCRIPT, not of the calibration. This used to be
+  // `participantList.some((p) => p.speaker_label)`, which asks whether
+  // diarization was calibrated — a different question. Names also resolve from
+  // participant_id, which the hardware client sends directly, so an uncalibrated
+  // session still produced a transcript reading "Manan: ..." / "Sonam: ..."
+  // while the prompt above it insisted every line was marked "Unknown speaker"
+  // and that Urushi must never say who said anything.
+  //
+  // The model was therefore told it could not attribute a word, and in the same
+  // prompt asked to rule on whose account was stronger. It hedged, and its
+  // verdicts flipped between runs on identical input. The flag has to describe
+  // the text the model is actually looking at.
+  // Includes the latest utterance: on the first turn of a session there is no
+  // prior transcript, and judging attribution on that alone would declare the
+  // room unattributable at the exact moment someone is identifiably speaking.
+  //
+  // A bare diarization label ("Speaker A") does not count. It separates voices
+  // without naming them, which is precisely the case the warning block is for.
+  const knownParticipantNames = new Set(participantList.map((p) => p.name))
+  const speakersIdentified = [...recentTranscript.map((t) => t.speakerName), speakerName]
+    .some((name) => knownParticipantNames.has(name))
 
   // Mediation counts as started once an issue is being tracked, or once the
   // PARTICIPANTS have said enough that the group is plainly into the substance.
@@ -233,7 +252,8 @@ export async function POST(
     // report is built from these, so the duplicates are not cosmetic.
     const existing = findMatchingIssue(
       decision.currentIssueTitle,
-      (existingIssues ?? []).map((i) => ({ id: i.id as string, title: String(i.title) }))
+      (existingIssues ?? []).map((i) => ({ id: i.id as string, title: String(i.title) })),
+      access.session.current_issue_id
     )
 
     if (existing) {

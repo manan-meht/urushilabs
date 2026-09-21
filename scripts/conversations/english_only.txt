@@ -1,0 +1,27 @@
+# An argument conducted entirely in English, with no Hindi or Hinglish anywhere,
+# so that running it with --language hinglish tests the OTHER direction of the
+# language question: does the configured language win when the room is not
+# speaking it? Every line here is plain English on purpose — if the mediator
+# mirrors the room instead of the setting, it will answer in English and the
+# setting is being ignored.
+#
+# topic: A cancelled holiday and money already spent
+# context: Priya booked and paid for a trip. Arjun pulled out two weeks before. They disagree about who absorbs the cancellation fee.
+
+Priya: You told me to book it. I paid the whole deposit myself.
+Arjun: I said it sounded nice. I never told you to put money down.
+[pause 7]
+
+Priya: You looked at the dates with me. You picked that week.
+Arjun: Looking at dates is not the same as committing to a trip.
+[wait 20]
+
+Priya: So who is right here? Tell me straight.
+[pause 6]
+
+Arjun: You are letting her lead this. You have not pushed back on her once.
+[pause 6]
+
+Priya: We are going round in circles again.
+Arjun: Because you keep rewriting what I actually said.
+[pause 8]

@@ -28,12 +28,23 @@ export const InterventionActionSchema = z.enum([
   'GIVE_VERDICT',
 ])
 
+/**
+ * `.nullish()`, not `.optional()`, on every optional field.
+ *
+ * The model does not omit a field it has nothing to say for — it sends
+ * `"emergingAgreement": null`. `.optional()` accepts `undefined` and rejects
+ * `null`, so a perfectly reasonable response failed schema validation and threw,
+ * and the mediator went silent for that turn. Intermittent by nature: it depends
+ * on whether the model chooses to emit the key at all.
+ */
+const optionalText = z.string().nullish().transform((v) => v ?? undefined)
+
 export const InterventionDecisionSchema = z.object({
   action: InterventionActionSchema,
   reasoning: z.string().min(1),
-  spokenText: z.string().optional(),
-  currentIssueTitle: z.string().optional(),
-  emergingAgreement: z.string().optional(),
+  spokenText: optionalText,
+  currentIssueTitle: optionalText,
+  emergingAgreement: optionalText,
 })
 
 export type InterventionDecision = z.infer<typeof InterventionDecisionSchema>
@@ -161,6 +172,49 @@ export interface MediationContext {
   askedForVerdict?: boolean
 }
 
+/**
+ * One retry on the failures that are known to be transient.
+ *
+ * A rate limit used to throw straight out of here, which surfaces as a 500 and
+ * loses the turn entirely — the participant's words are already saved, so the
+ * only thing that disappears is the mediator's reply, silently, with the room
+ * left waiting. Silence is this system's failure mode for everything, so a
+ * dropped turn is indistinguishable from a deliberate decision to listen.
+ *
+ * Mediation is live: a person is waiting in a room, so this retries once and
+ * briefly rather than backing off politely for several seconds.
+ */
+async function callWithRetry(apiKey: string, body: unknown): Promise<Response> {
+  const RETRY_STATUSES = new Set([429, 500, 502, 503, 504])
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return res
+
+    if (attempt === 0 && RETRY_STATUSES.has(res.status)) {
+      // Honour Retry-After when the API sends one. The cap was 2s on the
+      // reasoning that a late mediator has lost the moment — but the actual
+      // rate-limit responses ask for 6-8s, so a 2s cap retried too early, failed
+      // again, and lost the turn anyway. A reply eight seconds late is worse
+      // than a prompt one and far better than silence, which the room reads as
+      // the device being broken.
+      const after = Number(res.headers?.get?.('retry-after'))
+      const waitMs = Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 10_000) : 750
+      await new Promise((r) => setTimeout(r, waitMs))
+      continue
+    }
+
+    const text = await res.text()
+    throw new Error(`OpenAI mediation controller failed (${res.status}): ${text}`)
+  }
+
+  throw new Error('OpenAI mediation controller failed after retry.')
+}
+
 export async function decideIntervention(ctx: MediationContext): Promise<InterventionDecision> {
   // Being asked a direct question and getting silence reads as broken, so a
   // direct address skips both shortcuts below: a short "Urushi?" would otherwise
@@ -188,22 +242,13 @@ export async function decideIntervention(ctx: MediationContext): Promise<Interve
 
   const { system, user } = buildInterventionPrompt(ctx)
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      response_format: { type: 'json_object' },
-      max_tokens: 400,
-      temperature: 0.2,
-    }),
+  const res = await callWithRetry(OPENAI_API_KEY, {
+    model: OPENAI_MODEL,
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    response_format: { type: 'json_object' },
+    max_tokens: 400,
+    temperature: 0.2,
   })
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`OpenAI mediation controller failed (${res.status}): ${text}`)
-  }
 
   const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
   const raw = data.choices?.[0]?.message?.content

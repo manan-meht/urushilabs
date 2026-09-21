@@ -1,0 +1,15 @@
+# Short, for the same token-budget reason as verdict_short.txt: the challenge to
+# the mediator is the third call rather than the seventh.
+#
+# The question under test: "you're being one-sided" must get a substantive answer
+# that names what actually went unchallenged — not a de-escalation, and not a
+# request for more input.
+#
+# topic: A missed deadline and who agreed to what
+# context: Manan says Sonam committed to Friday and moved it without telling him. Sonam says the date was never fixed.
+
+Manan: Tune Friday bola tha. Maine client ko wahi date di thi.
+Sonam: I never said Friday was final. We were still discussing it.
+Sonam: You're not saying anything to him. You're being one-sided.
+[pause 6]
+Manan: She's right that you've only been asking questions.

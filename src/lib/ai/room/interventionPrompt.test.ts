@@ -229,13 +229,62 @@ describe('the final-position imperatives', () => {
     expect(user).not.toContain('" +')
   })
 
-  it('puts them last, after the cooldown line', () => {
+  it('puts them after the cooldown line, with only the language reminder below', () => {
     // Final position is the only place these have ever held; three mid-prompt
     // versions produced three different evasions.
-    const { user } = buildInterventionPrompt({ ...baseCtx, askedForVerdict: true })
-    expect(user.indexOf('THEY HAVE ASKED YOU WHO IS RIGHT'))
-      .toBeGreaterThan(user.indexOf('since Urushi last spoke'))
-    expect(user.trimEnd().endsWith('what they are complaining about.')).toBe(true)
+    //
+    // The one-line language reminder sits below them deliberately. Putting the
+    // imperatives dead last buried it under a shouted paragraph, and three of
+    // four challenge replies in a Hinglish room came back in English.
+    const { user } = buildInterventionPrompt({ ...baseCtx, challengedByParticipant: true })
+    const challenge = user.indexOf('THIS IS A COMPLAINT ABOUT YOU')
+    expect(challenge).toBeGreaterThan(user.indexOf('since Urushi last spoke'))
+    expect(user.indexOf('Language check')).toBeGreaterThan(challenge)
+    expect(user.trimEnd()).toMatch(/Language check[^\n]*$/)
+  })
+
+  it('drops the escape hatch for the personality that exists to give verdicts', () => {
+    // Offered unconditionally, every personality took it — a position was
+    // actually taken in 1 of 2 Straight Shooter runs and 0 of 4 for the others.
+    // An out that is always available is the one the model always chooses.
+    const shooter = buildInterventionPrompt({
+      ...baseCtx,
+      settings: normalizeConversationSettings({ personality: 'straight_shooter' }),
+      askedForVerdict: true,
+    }).user
+    expect(shooter).toContain('you can call this one')
+    expect(shooter).not.toContain('If the conversation genuinely does not contain enough to judge')
+
+    const diplomat = buildInterventionPrompt({
+      ...baseCtx,
+      settings: normalizeConversationSettings({ personality: 'diplomat' }),
+      askedForVerdict: true,
+    }).user
+    expect(diplomat).toContain('If the conversation genuinely does not contain enough to judge')
+  })
+
+  it('carries a previous verdict into the imperative that overrides the repetition guard', () => {
+    // Asked a second time it returned its previous verdict word for word in
+    // every run tested: the mid-message repetition guard loses to this
+    // imperative, so the prior verdict has to travel with it.
+    const { user } = buildInterventionPrompt({
+      ...baseCtx,
+      askedForVerdict: true,
+      recentSpokenActions: ['GIVE_VERDICT', 'CLARIFY'],
+      recentSpokenTexts: ['On this point, Manan is right.'],
+    })
+    expect(user).toContain('You have ALREADY given a verdict on this')
+    expect(user).toContain('On this point, Manan is right.')
+  })
+
+  it('does not warn about a previous verdict when there was not one', () => {
+    const { user } = buildInterventionPrompt({
+      ...baseCtx,
+      askedForVerdict: true,
+      recentSpokenActions: ['CLARIFY'],
+      recentSpokenTexts: ['What date did you agree?'],
+    })
+    expect(user).not.toContain('ALREADY given a verdict')
   })
 
   it('omits them entirely when neither applies', () => {

@@ -56,15 +56,40 @@ export function issueSimilarity(a: string, b: string): number {
  */
 export const ISSUE_MATCH_THRESHOLD = 0.6
 
+/**
+ * A much lower bar for the issue the room is CURRENTLY on.
+ *
+ * 0.6 could not catch the real sequence, which was one dispute renamed as its
+ * scope grew: "Workload Split" then "Workload and Time Management" then "Time
+ * Management and Workload Imbalance". A two-token title sharing one token with a
+ * three-token title scores exactly 0.5 and can never reach 0.6, so all three
+ * were filed and one argument appeared in the report as three unresolved
+ * issues.
+ *
+ * Lowering the GLOBAL threshold to catch it would merge genuinely different
+ * disputes that happen to share a word ("holiday scheduling" and "workload
+ * scheduling" also score 0.5). The asymmetry is the point: a room discusses one
+ * thing at a time, so a new title that overlaps the issue already open is far
+ * more likely to be that issue under a longer name than a second dispute
+ * appearing in the same breath.
+ */
+export const CURRENT_ISSUE_MATCH_THRESHOLD = 0.34
+
 export interface MatchableIssue {
   id: string
   title: string
 }
 
-/** The issue this title refers to, or null if it is genuinely new. */
+/**
+ * The issue this title refers to, or null if it is genuinely new.
+ *
+ * `currentIssueId` is the issue the room is already discussing, which is held to
+ * the lower bar above.
+ */
 export function findMatchingIssue<T extends MatchableIssue>(
   title: string,
-  existing: readonly T[]
+  existing: readonly T[],
+  currentIssueId?: string | null
 ): T | null {
   const normalized = title.trim().toLowerCase()
   if (!normalized) return null
@@ -77,12 +102,20 @@ export function findMatchingIssue<T extends MatchableIssue>(
     if (other === normalized || other.includes(normalized) || normalized.includes(other)) {
       return candidate
     }
+
     const score = issueSimilarity(normalized, other)
-    if (score > bestScore) {
+    const threshold = candidate.id === currentIssueId
+      ? CURRENT_ISSUE_MATCH_THRESHOLD
+      : ISSUE_MATCH_THRESHOLD
+
+    // Compared against its own threshold rather than picking the highest scorer
+    // and testing afterwards, so a weak match on the open issue still wins over
+    // a slightly stronger one on an issue the room has moved past.
+    if (score >= threshold && score > bestScore) {
       bestScore = score
       best = candidate
     }
   }
 
-  return bestScore >= ISSUE_MATCH_THRESHOLD ? best : null
+  return best
 }

@@ -1,0 +1,15 @@
+# Deliberately short. The verdict request is the THIRD call, so it lands while the
+# account's tokens-per-minute budget still has room — in the long escalation script
+# the same line falls near the end, where a 429 turns it into a lost turn and the
+# run tells you nothing about what the mediator would have said.
+#
+# The question under test: "galti kiski hai?" must get a position, not a question back.
+#
+# topic: A missed deadline and who agreed to what
+# context: Manan says Sonam committed to Friday and moved it without telling him. Sonam says the date was never fixed.
+
+Manan: Tune Friday bola tha. Maine client ko wahi date di thi.
+Sonam: I never said Friday was final. We were still discussing it.
+Manan: Tu hi bata, galti kiski hai?
+[pause 6]
+Sonam: Yes, say it. Who is right here?

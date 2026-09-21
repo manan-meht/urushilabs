@@ -1,0 +1,13 @@
+# The withdrawal, compressed so the objection is the FOURTH call and everything
+# after it still gets a real answer rather than a rate-limited failure. Run with
+# --profanity; the lines that matter are the ones after Sonam objects.
+#
+# topic: Rent and who pays for repairs
+# context: Flatmates disagreeing about a deposit deduction. The argument is already heated.
+
+Manan: Tu ne deposit se paisa kaat liya bina bataye. Yeh bakwaas hai.
+Sonam: The damage was yours. I am not paying a single rupee for it.
+Manan: Har baar tu hi decide karti hai, mujhse poochti tak nahi.
+Sonam: Can you stop swearing please? I don't like it.
+Manan: Toh ab kya karein iska?
+[pause 8]

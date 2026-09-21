@@ -49,6 +49,12 @@ Normal voice assistants reply after every utterance. That is explicitly wrong he
 # Available actions
 ${ACTIONS.map((a) => `- ${a}`).join('\n')}
 
+MOVE_TO_NEXT_ISSUE means you are leaving a topic, NOT that it was settled. Do not
+say or imply they agreed, reached a plan, or are "on the same page" unless
+someone actually said so in the transcript. Moving on from an unresolved
+disagreement is normal and honest; describing it as resolved is not, and it puts
+a settlement nobody made into their final report.
+
 LISTEN means Urushi says nothing. Choose LISTEN unless one of these applies:
 - Someone is being repeatedly interrupted or hasn't had a chance to speak (use sparingly — a pause alone is not a reason)
 - The conversation is going in circles, restating the same disagreement without progress
@@ -82,6 +88,21 @@ Use it rather than dressing a judgement up as something else. If what you want t
 say is "he's right about this", that is GIVE_VERDICT — not an IDENTIFY_ISSUE
 whose title is really a ruling, and not a CLARIFY that asks a question you
 already know the answer to.
+
+One test, applied before you choose it: does your sentence say that a NAMED
+person is right about a SPECIFIC point, and why? If not, it is not a verdict, and
+labelling it GIVE_VERDICT makes the action meaningless — the final report is
+built from these labels.
+
+  WRONG: "Both of you agree the workload split is a problem. How about a weekly
+          check-in?"                         (that is PROPOSE_COMPROMISE)
+  WRONG: "It seems there was a misunderstanding about the date."
+                                             (that is REFRAME — nobody is right)
+  WRONG: "You both make fair points."        (that is the absence of a verdict)
+  RIGHT: "You agreed to Friday in the meeting and moved it without telling her.
+          On that point, Sonam is right."
+  RIGHT: "Manan asked you twice what date you can commit to and you have not
+          answered either time. He is right to push on it."
 
 Do NOT use it to assign blame for the dispute as a whole, to moralise, or to
 judge someone's character. You are judging a claim, never a person.
@@ -255,11 +276,17 @@ Therefore:
 `
     : ''
 
-  // The one-line language reminder, and then the conditional imperatives, come
-  // LAST. Everything the model must not forget has had to be moved here at some
-  // point: language switching went from 0/6 to 4/6 on the move alone, and three
-  // separate mid-prompt rules about answering a challenge produced three
-  // different evasions before the same move fixed it.
+  // Ordering at the end of this message is load-bearing, and the two things that
+  // belong here compete for the same position. Everything the model must not
+  // forget has had to be moved here at some point: language switching went from
+  // 0/6 to 4/6 on the move alone, and three mid-prompt rules about answering a
+  // challenge produced three different evasions before the same move fixed it.
+  //
+  // The imperatives are long and emphatic, the language reminder is one line, so
+  // the reminder goes genuinely LAST and the imperatives immediately before it.
+  // The other order was tried and lost the language: with a challenge in play,
+  // three of four replies in a Hinglish room came back in English, because the
+  // reminder was buried under a paragraph shouting about the challenge.
   const languageReminder = buildPersonaLanguageReminder(ctx.settings)
 
   // Previously assembled with a leftover string-concatenation from an earlier
@@ -267,12 +294,46 @@ Therefore:
   // `...whose position is stronger " + "and why...`. The single most important
   // instruction in the prompt was being delivered as garbled fragments, which is
   // a large part of why it never held.
+  // The escape hatch — "name the one fact that would settle it" — used to be
+  // offered unconditionally, and every personality took it: on a direct "galti
+  // kiski hai?" a position was actually taken in 1 of 2 Straight Shooter runs
+  // and 0 of 4 for the others. An out that is always available is the answer the
+  // model will always choose, because it is the safe one.
+  //
+  // So the Straight Shooter does not get it. It is the one personality whose
+  // entire proposition is that it will tell you, the participants chose it
+  // knowing that, and "I need more information" is what they picked it to avoid.
+  const mayDeferVerdict = ctx.settings.personality !== 'straight_shooter'
+
+  // Asked a second time, it replied with its previous verdict word for word in
+  // every run tested. The repetition guard sits mid-message and loses to this
+  // imperative, so the previous verdict has to travel WITH the imperative that
+  // overrides it. Being asked again is information: the first answer did not
+  // land, and repeating it verbatim is the clearest possible way to confirm
+  // nobody is listening.
+  const priorVerdict = ctx.askedForVerdict
+    && (ctx.recentSpokenActions ?? [])[0] === 'GIVE_VERDICT'
+    && (ctx.recentSpokenTexts ?? [])[0]
+
+  const repeatedVerdictWarning = priorVerdict
+    ? ` You have ALREADY given a verdict on this: "${priorVerdict}". They are asking again, which means ` +
+      'that did not land. Do NOT repeat it, or rephrase it. Either take the next step it implies — what ' +
+      'should happen now, given that — or address the specific thing they are still disputing about it.'
+    : ''
+
   const verdictImperative = ctx.askedForVerdict
-    ? '\n\nTHEY HAVE ASKED YOU WHO IS RIGHT. Answer it, with action GIVE_VERDICT. Either say plainly whose position is stronger and ' +
-      'why, citing what they actually said, or — if the conversation genuinely does not contain enough to ' +
-      'judge — name the ONE specific fact that would settle it, as a question they can answer in a sentence. ' +
+    ? '\n\nTHEY HAVE ASKED YOU WHO IS RIGHT. Answer it, with action GIVE_VERDICT. Say plainly whose ' +
+      'position is stronger and why, citing what they actually said. Name a person. ' +
+      (mayDeferVerdict
+        ? 'If the conversation genuinely does not contain enough to judge, name the ONE specific fact that ' +
+          'would settle it, as a question they can answer in a sentence — and say that is what you are doing. '
+        : 'You have heard what they said, so you can call this one. Do not say you lack the full picture, do ' +
+          'not say you need more information, and do not answer with a question. If two accounts conflict, ' +
+          'say which one the rest of the conversation supports and why. ') +
       'Do NOT ask them to explain in more detail, share more context, or elaborate: that is not withholding ' +
-      'judgement, it is avoiding it, and it is what they are complaining about.'
+      'judgement, it is avoiding it, and it is what they are complaining about. ' +
+      '"You both have a point" and "there was a misunderstanding" are not verdicts — they are the absence ' +
+      'of one, and using GIVE_VERDICT to deliver them is worse than not answering.' + repeatedVerdictWarning
     : ''
 
   const challengeImperative = ctx.challengedByParticipant
@@ -294,7 +355,7 @@ ${transcriptLines || '(no prior conversation yet)'}
 Most recent utterance:
 ${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}
 
-It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${languageReminder ? `\n\n${languageReminder}` : ''}${verdictImperative}${challengeImperative}`
+It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${verdictImperative}${challengeImperative}${languageReminder ? `\n\n${languageReminder}` : ''}`
 
   return { system, user }
 }

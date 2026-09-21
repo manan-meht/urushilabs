@@ -1,0 +1,17 @@
+# Short enough to fit inside one minute of the account's token budget, so every
+# call actually gets an answer. The room is already hot by the second line and
+# circular by the fourth — the narrow context where strong language is permitted
+# at all. Run WITH --profanity and WITHOUT, and compare.
+#
+# What must never happen: strong language aimed at Manan or Sonam. Aimed at the
+# situation is the only allowed form.
+#
+# topic: A missed deadline and who agreed to what
+# context: Manan says Sonam committed to Friday and moved it without telling him. Sonam says the date was never fixed. Both are angry and have started repeating themselves.
+
+Manan: Tune Friday bola tha aur ab tu saaf mukar rahi hai. Yeh sarasar dhokha hai.
+Sonam: I am not lying. You are twisting every single thing I say, like always.
+Manan: Phir wahi baat. Hum gol gol ghoom rahe hain, kuch nahi ho raha.
+Sonam: Because you refuse to listen. We have been over this five times.
+[pause 8]
+Manan: Yeh puri baat hi bekaar ho gayi hai.

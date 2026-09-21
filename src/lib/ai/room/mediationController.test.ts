@@ -106,10 +106,66 @@ describe('decideIntervention — live model call', () => {
     expect(decision.action).toBe('DEESCALATE')
   })
 
-  it('throws on a non-ok response', async () => {
+  it('throws on a non-ok response that does not clear on retry', async () => {
     envWith({})
     vi.mocked(fetch).mockResolvedValue({ ok: false, status: 500, text: async () => 'server error' } as Response)
     await expect(decideIntervention(baseCtx)).rejects.toThrow(/mediation controller failed/i)
+  })
+
+  it('retries a rate limit rather than losing the turn', async () => {
+    // A 429 used to throw straight out, which surfaces as a 500 and drops the
+    // mediator's reply while the participant's words are already saved. Silence
+    // is this system's failure mode for everything, so a lost turn is
+    // indistinguishable from a deliberate decision to listen — the room just
+    // waits. Observed repeatedly once the prompt grew: the token-per-minute
+    // ceiling is reachable in a normal conversation.
+    envWith({})
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: { get: () => '0' },
+        text: async () => 'rate limited',
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ action: 'CLARIFY', reasoning: 'Worth a question.' }) } }],
+        }),
+      } as Response)
+
+    const decision = await decideIntervention(baseCtx)
+    expect(decision.action).toBe('CLARIFY')
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry a bad request, which will fail identically', async () => {
+    envWith({})
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false, status: 400, headers: { get: () => null }, text: async () => 'bad request',
+    } as unknown as Response)
+    await expect(decideIntervention(baseCtx)).rejects.toThrow(/400/)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts null for optional fields, which is what the model actually sends', async () => {
+    // The model does not omit a field it has nothing to say for, it sends null.
+    // .optional() rejects null, so a perfectly reasonable response failed schema
+    // validation and the mediator went silent for that turn.
+    envWith({})
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: JSON.stringify({
+          action: 'LISTEN', reasoning: 'Let them talk.', spokenText: null,
+          currentIssueTitle: null, emergingAgreement: null,
+        }) } }],
+      }),
+    } as Response)
+
+    const decision = await decideIntervention(baseCtx)
+    expect(decision.action).toBe('LISTEN')
+    expect(decision.emergingAgreement).toBeUndefined()
   })
 
   it('throws when the model response fails schema validation', async () => {
