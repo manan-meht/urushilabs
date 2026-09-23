@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 type ProductKey = '1_room' | '3_rooms' | '10_followups'
@@ -11,7 +10,6 @@ interface Product {
   label: string
   description: string
   badge?: string
-  price: number
   features: string[]
 }
 
@@ -20,7 +18,6 @@ const ROOM_PRODUCTS: Product[] = [
     key: '1_room',
     label: '1 Room Pack',
     description: 'Access to 1 mediation room',
-    price: 199,
     features: ['1 new mediation room', 'Full AI-facilitated session', 'Shared report for both parties'],
   },
   {
@@ -28,7 +25,6 @@ const ROOM_PRODUCTS: Product[] = [
     label: '3 Room Pack',
     description: 'Access to 3 mediation rooms',
     badge: 'BEST VALUE',
-    price: 499,
     features: ['3 new mediation rooms', 'Full AI-facilitated sessions', 'Shared reports for all rooms'],
   },
 ]
@@ -37,7 +33,6 @@ const FOLLOWUP_PRODUCT: Product = {
   key: '10_followups',
   label: 'Follow-up Pack',
   description: '10 Additional AI-mediated responses',
-  price: 199,
   features: [
     '10 Additional AI-mediated responses',
     'Deep conflict analysis report',
@@ -50,10 +45,30 @@ interface Props {
   followUpsAvailable: number
   totalRoomsCreated: number
   isFollowUp: boolean
+  /**
+   * Formatted prices for this buyer's market, resolved server-side.
+   *
+   * Passed in rather than held here because the market comes from a request
+   * header this component never sees, and because a price a client component
+   * decides is a price that can be edited before it is sent. The server charges
+   * what IT looks up; these strings are display only.
+   */
+  prices: Record<ProductKey, string>
+  market: string
+  country: string | null
 }
 
-export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCreated, isFollowUp }: Props) {
-  const router = useRouter()
+/** Explains the currency, and names the country it was guessed from. */
+function currencyNote(market: string, country: string | null): string {
+  if (market === 'IN') return 'Charged in Indian rupees.'
+  if (market === 'SG') return 'Charged in Singapore dollars.'
+  if (market === 'US') return 'Charged in US dollars.'
+  return country
+    ? `Charged in US dollars, our default outside India and Singapore.`
+    : 'Charged in US dollars.'
+}
+
+export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCreated, isFollowUp, prices, market, country }: Props) {
   const defaultSelected: ProductKey = isFollowUp ? '10_followups' : '1_room'
   const [selected, setSelected] = useState<ProductKey>(defaultSelected)
   const [loading, setLoading] = useState(false)
@@ -71,14 +86,16 @@ export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productKey: selected }),
       })
-      const order = await orderRes.json() as { paymentId?: string; error?: string }
-      if (!orderRes.ok || !order.paymentId) {
-        setError(order.error ?? 'Failed to create order.')
+      const order = await orderRes.json() as { paymentId?: string; checkoutUrl?: string; error?: string }
+      if (!orderRes.ok || !order.checkoutUrl) {
+        setError(order.error ?? 'Failed to start checkout.')
         setLoading(false)
         return
       }
-      // TODO: Open Razorpay checkout with order.razorpayOrderId once integrated
-      router.push(`/payment/processing?paymentId=${order.paymentId}&product=${selected}`)
+      // A full navigation, not router.push: the gateway's checkout is hosted on
+      // its own origin, so this leaves the app entirely. Card details never
+      // reach us, and 3DS is handled there.
+      window.location.href = order.checkoutUrl
     } catch {
       setError('A network error occurred. Please try again.')
       setLoading(false)
@@ -137,7 +154,7 @@ export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCr
               <h2 className="font-headline-md text-on-surface text-[20px]">Follow-up Pack</h2>
             </div>
             <div className="text-right">
-              <span className="font-headline-md text-on-surface text-[22px] font-bold">₹199</span>
+              <span className="font-headline-md text-on-surface text-[22px] font-bold">{prices['1_room']}</span>
               <span className="block text-label-sm text-on-surface-variant">Inclusive of GST</span>
             </div>
           </div>
@@ -180,7 +197,7 @@ export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCr
                   <p className="text-label-sm text-on-surface-variant">{product.description}</p>
                 </div>
               </div>
-              <span className="font-bold text-on-surface">₹{product.price}</span>
+              <span className="font-bold text-on-surface">{prices[product.key]}</span>
             </div>
           </button>
         ))}
@@ -191,7 +208,7 @@ export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCr
         <h3 className="font-medium text-on-surface mb-3">Order Summary</h3>
         <div className="flex justify-between text-label-md text-on-surface mb-2">
           <span>{selectedProduct.label}</span>
-          <span>₹{selectedProduct.price}.00</span>
+          <span>{prices[selectedProduct.key]}</span>
         </div>
         <div className="flex justify-between text-label-md text-on-surface-variant mb-3">
           <span>Convenience Fee</span>
@@ -199,8 +216,18 @@ export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCr
         </div>
         <div className="border-t border-outline-variant pt-3 flex justify-between font-bold text-on-surface">
           <span>Total</span>
-          <span className="text-[18px]">₹{selectedProduct.price}.00</span>
+          <span className="text-[18px]">{prices[selectedProduct.key]}</span>
         </div>
+        {/*
+          Says which currency this is and why, because the currency was picked
+          from the buyer's IP and that is wrong often enough to matter — a
+          traveller, a VPN, a mobile carrier routing through another country.
+          The charge itself is confirmed by the gateway before anything is taken,
+          so this only needs to explain, not to gate.
+        */}
+        <p className="text-label-sm text-on-surface-variant mt-2">
+          {currencyNote(market, country)} Tax, where it applies, is included.
+        </p>
         <p className="text-label-sm text-on-surface-variant mt-2 flex items-center gap-1">
           <span className="material-symbols-outlined text-[14px]">info</span>
           One payment covers both participants in this room.
@@ -250,7 +277,7 @@ export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCr
       <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-outline-variant px-margin-mobile py-4 max-w-md mx-auto">
         <div className="flex items-center justify-between mb-2">
           <span className="text-label-sm text-on-surface-variant">Final Total</span>
-          <span className="font-bold text-on-surface text-[18px]">₹{selectedProduct.price}</span>
+          <span className="font-bold text-on-surface text-[18px]">{prices[selectedProduct.key]}</span>
         </div>
         <button
           onClick={() => void handlePurchase()}
