@@ -50,13 +50,19 @@ export const PROFANITY_FORBIDDEN_EXAMPLES: ProfanityExample[] = [
 ]
 
 /**
- * Names the actual words. An earlier version said "strong English and Hindi
- * gaalis", which is accurate and tells you nothing — someone agreeing deserves
- * to know the intensity before the session starts, not after the mediator says
- * it. "Never directed at you" is the other half, and the more important one.
+ * Names the actual words AND how often they arrive. An early version said
+ * "strong English and Hindi gaalis", which is accurate and tells you nothing.
+ * Its replacement named the words but said "for emphasis or frustration", which
+ * reads as occasional — and the mediator now swears in roughly three turns out
+ * of four. Someone agreeing to that deserves to know the frequency before the
+ * session, not to discover it in the room.
+ *
+ * "Aimed at the situation, never at you" is the other half, and the more
+ * important one: it is the promise that does not change however often it swears.
  */
 export const PROFANITY_HELPER_TEXT =
-  'May include words like \u2018fuck\u2019 and \u2018bhenchod\u2019 for emphasis or frustration. Never directed at you.'
+  'Swears in most replies \u2014 words like \u2018fuck\u2019 and \u2018bakwaas\u2019, and \u2018bhenchod\u2019 when things go in circles. ' +
+  'Aimed at the situation, never at you.'
 
 export const PROFANITY_TOGGLE_LABEL = 'Allow strong profanity'
 
