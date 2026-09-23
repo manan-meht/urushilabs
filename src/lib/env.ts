@@ -26,6 +26,8 @@ export interface EnvConfig {
   OPENAI_REALTIME_TRANSCRIBE_MODEL: string
   OPENAI_REALTIME_VOICE: string
   OPENAI_REALTIME_TRANSCRIBE_LANGUAGES: string
+  RAZORPAY_KEY_ID?: string
+  RAZORPAY_KEY_SECRET?: string
   MEETING_MEDIATION_ENABLED: boolean
   MEETING_MEDIATION_ALLOWED_EMAILS: string
   RECALL_API_KEY?: string
@@ -92,6 +94,8 @@ export function getEnv(): EnvConfig {
     WHATSAPP_API_VERSION: process.env['WHATSAPP_API_VERSION'] ?? 'v21.0',
     RESEND_API_KEY: process.env['RESEND_API_KEY'],
     EMAIL_FROM: process.env['EMAIL_FROM'],
+    RAZORPAY_KEY_ID: process.env['RAZORPAY_KEY_ID'],
+    RAZORPAY_KEY_SECRET: process.env['RAZORPAY_KEY_SECRET'],
     LIVE_MEDIATION_ENABLED: process.env['LIVE_MEDIATION_ENABLED'] === 'true',
     LIVE_MEDIATION_ALLOWED_EMAILS: process.env['LIVE_MEDIATION_ALLOWED_EMAILS'] ?? '',
     OPENAI_REALTIME_MODEL: process.env['OPENAI_REALTIME_MODEL'] ?? 'gpt-realtime-2.1',
