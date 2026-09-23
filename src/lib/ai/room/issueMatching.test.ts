@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { findMatchingIssue, issueSimilarity, issueTokens } from './issueMatching'
+import { decideIssueOutcome, findMatchingIssue, issueSimilarity, issueTokens } from './issueMatching'
 
 const existing = [{ id: 'i1', title: 'Workload and Decision-Making' }]
 
@@ -64,5 +64,74 @@ describe('issueSimilarity', () => {
 
   it('scores unrelated titles at zero', () => {
     expect(issueSimilarity('office lease', 'holiday scheduling')).toBe(0)
+  })
+})
+
+describe('decideIssueOutcome', () => {
+  const open = [{ id: 'i1', title: 'Workload and Decision-Making' }]
+
+  it('records an issue named on an action that is not IDENTIFY_ISSUE', () => {
+    // The bug: currentIssueTitle is returned on every decision, and only
+    // IDENTIFY_ISSUE ever acted on it. Across 16 replays a session had an issue
+    // row if and only if the model happened to pick that one action, and 7 of 16
+    // ended with no issue at all despite a clearly identified dispute — one
+    // returned "Missed deadline and agreement on date" on a CLARIFY and recorded
+    // nothing.
+    expect(decideIssueOutcome({ action: 'CLARIFY', title: 'Missed deadline', existing: [] }))
+      .toEqual({ kind: 'create' })
+    expect(decideIssueOutcome({ action: 'GIVE_VERDICT', title: 'Missed deadline', existing: [] }))
+      .toEqual({ kind: 'create' })
+  })
+
+  it('attaches to the open issue from any spoken action', () => {
+    // These two score exactly 1/3 — a real pair this system produced. The
+    // threshold sat at 0.34 and missed it by seven thousandths.
+    expect(decideIssueOutcome({
+      action: 'GIVE_VERDICT', title: 'Workload and Time Management',
+      existing: open, currentIssueId: 'i1',
+    })).toEqual({ kind: 'reuse', id: 'i1' })
+  })
+
+  it('will not open a SECOND issue from an incidental label', () => {
+    // Creating stays narrower than recognising. A passing label on a verdict is
+    // not a new dispute, and treating it as one re-creates the duplicate rows
+    // this module exists to prevent.
+    expect(decideIssueOutcome({
+      action: 'PROPOSE_COMPROMISE', title: 'Preventing future miscommunication',
+      existing: open, currentIssueId: 'i1',
+    })).toEqual({ kind: 'none' })
+  })
+
+  it('lets IDENTIFY_ISSUE open a second issue, because that is it saying so', () => {
+    expect(decideIssueOutcome({
+      action: 'IDENTIFY_ISSUE', title: 'Who pays for the office lease',
+      existing: open, currentIssueId: 'i1',
+    })).toEqual({ kind: 'create' })
+  })
+
+  it('does not open a new row once the room has moved on from an issue', () => {
+    // MOVE_TO_NEXT_ISSUE sets current_issue_id to NULL, so "nothing is open" is
+    // true again every time the room moves on. Gating creation on that let any
+    // passing label file another row, and one replay produced three rows for a
+    // single dispute.
+    expect(decideIssueOutcome({
+      action: 'GIVE_VERDICT', title: 'Something else entirely',
+      existing: open, currentIssueId: null,
+    })).toEqual({ kind: 'none' })
+  })
+
+  it('still recognises a rename after the room moved on', () => {
+    expect(decideIssueOutcome({
+      action: 'GIVE_VERDICT', title: 'Workload and Time Management',
+      existing: open, currentIssueId: null,
+    })).toEqual({ kind: 'reuse', id: 'i1' })
+  })
+
+  it('ignores LISTEN and empty titles', () => {
+    expect(decideIssueOutcome({ action: 'LISTEN', title: 'Workload', existing: open }))
+      .toEqual({ kind: 'none' })
+    expect(decideIssueOutcome({ action: 'CLARIFY', existing: open })).toEqual({ kind: 'none' })
+    expect(decideIssueOutcome({ action: 'CLARIFY', title: '   ', existing: open }))
+      .toEqual({ kind: 'none' })
   })
 })

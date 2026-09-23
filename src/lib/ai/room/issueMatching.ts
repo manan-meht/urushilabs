@@ -50,11 +50,28 @@ export function issueSimilarity(a: string, b: string): number {
 }
 
 /**
- * Tuned to merge readily. Filing a second row for one dispute corrupts the
- * report and has actually happened repeatedly; attaching a genuinely new issue
- * to an existing row is recoverable, and the room will say so out loud.
+ * Deliberately low, and the same for every issue in the session.
+ *
+ * This started at 0.6 with a lower bar for the issue currently open, on the
+ * theory that a title overlapping the OPEN issue is probably a rename while one
+ * overlapping a closed issue might be a genuine second dispute. Two rounds of
+ * replay evidence say otherwise. 0.6 never once prevented a bad merge, and it
+ * twice failed to prevent duplicates — "Missed deadline and date agreement"
+ * against "Missed deadline and communication breakdown" scores 0.5, and
+ * "Workload imbalance and decision-making" against "Workload and Time
+ * Management" scores 0.33. Both are plainly the same argument.
+ *
+ * The two-tier version also had a hole that only showed up live:
+ * MOVE_TO_NEXT_ISSUE sets current_issue_id to NULL, so after the room moved on
+ * once, nothing was "current" and every subsequent title was compared at the
+ * strict threshold. One replay produced three rows for one dispute.
+ *
+ * The cost is asymmetric. A duplicate corrupts the final report, which is the
+ * artefact participants actually keep; over-merging loses a distinction the room
+ * will restate out loud anyway. Every multi-row case observed so far has been a
+ * rename, never two genuine disputes named in the same breath.
  */
-export const ISSUE_MATCH_THRESHOLD = 0.6
+export const ISSUE_MATCH_THRESHOLD = 0.3
 
 /**
  * A much lower bar for the issue the room is CURRENTLY on.
@@ -73,7 +90,15 @@ export const ISSUE_MATCH_THRESHOLD = 0.6
  * more likely to be that issue under a longer name than a second dispute
  * appearing in the same breath.
  */
-export const CURRENT_ISSUE_MATCH_THRESHOLD = 0.34
+/**
+ * Kept as a named export for callers, but now equal to the general threshold.
+ *
+ * 0.3, not 0.34: two three-token titles sharing one token score exactly 1/3 —
+ * "Workload and Time Management" against "Workload and Decision-Making", a real
+ * pair this system produced — and a threshold of 0.34 excluded it by seven
+ * thousandths.
+ */
+export const CURRENT_ISSUE_MATCH_THRESHOLD = ISSUE_MATCH_THRESHOLD
 
 export interface MatchableIssue {
   id: string
@@ -118,4 +143,49 @@ export function findMatchingIssue<T extends MatchableIssue>(
   }
 
   return best
+}
+
+/** What to do with the issue title a decision carried. */
+export type IssueOutcome =
+  | { kind: 'reuse'; id: string }
+  | { kind: 'create' }
+  | { kind: 'none' }
+
+export interface IssueDecisionInput {
+  action: string
+  title?: string
+  existing: readonly MatchableIssue[]
+  currentIssueId?: string | null
+}
+
+/**
+ * Whether a decision's issue title should open an issue, attach to one, or be
+ * ignored.
+ *
+ * Extracted from the route because the previous version of this rule was a
+ * single `action === 'IDENTIFY_ISSUE'` check that silently discarded the title
+ * on every other action — and being one clause inside a long handler, nothing
+ * tested it and nothing noticed. Across 16 replays a session ended up with an
+ * issue row if and only if the model happened to choose that one action.
+ *
+ * Recognising is deliberately wider than creating. Any spoken turn may attach to
+ * an issue already open, but only IDENTIFY_ISSUE may open a SECOND one: a
+ * passing label on a verdict is not a new dispute, and treating it as one
+ * re-creates the duplicate rows this module exists to prevent.
+ */
+export function decideIssueOutcome(input: IssueDecisionInput): IssueOutcome {
+  const { action, title, existing, currentIssueId } = input
+
+  if (action === 'LISTEN' || !title || !title.trim()) return { kind: 'none' }
+
+  const match = findMatchingIssue(title, existing, currentIssueId)
+  if (match) return { kind: 'reuse', id: match.id }
+
+  // `existing.length === 0`, not `!currentIssueId`. MOVE_TO_NEXT_ISSUE nulls
+  // current_issue_id, so "nothing is open" is true again every time the room
+  // moves on — and any passing label then opened another row. One replay
+  // produced three rows for one dispute that way.
+  if (action === 'IDENTIFY_ISSUE' || existing.length === 0) return { kind: 'create' }
+
+  return { kind: 'none' }
 }

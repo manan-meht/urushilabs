@@ -5,7 +5,7 @@ import { RoomInterveneSchema } from '@/lib/validation/schemas'
 import { decideIntervention, type RoomTranscriptEntry } from '@/lib/ai/room/mediationController'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
 import { detectMediatorChallenge, detectVerdictRequest } from '@/lib/ai/room/mediatorChallenge'
-import { findMatchingIssue } from '@/lib/ai/room/issueMatching'
+import { decideIssueOutcome } from '@/lib/ai/room/issueMatching'
 import { getConversationSettings } from '@/lib/conversation/getSettings'
 import { detectProfanityObjection } from '@/lib/conversation/profanityObjection'
 import { disableProfanity } from '@/lib/conversation/acceptance'
@@ -239,27 +239,42 @@ export async function POST(
   let newIssueId: string | null = null
   let newAgreementId: string | null = null
 
-  if (decision.action === 'IDENTIFY_ISSUE' && decision.currentIssueTitle) {
+  // Any spoken turn can name the issue, not only IDENTIFY_ISSUE.
+  //
+  // currentIssueTitle is returned on EVERY decision — the output schema asks for
+  // "the issue currently being discussed, if identifiable" regardless of action
+  // — but only IDENTIFY_ISSUE ever acted on it, so the rest were silently
+  // dropped. Across 16 replays the correlation was exact: a session had an issue
+  // row if and only if the model happened to pick IDENTIFY_ISSUE, and 7 of 16
+  // finished with no issue at all despite a clearly identified dispute. One run
+  // returned "Missed deadline and agreement on date" on a CLARIFY and recorded
+  // nothing.
+  //
+  // Adding GIVE_VERDICT made this worse rather than causing it: taking a
+  // position is now often the natural action at exactly the moment the issue
+  // becomes nameable, so it displaced the one action that was being listened to.
+  //
+  // The final report is built from these rows, so a dropped issue is a
+  // conversation that gets reported as having had no subject.
+  if (decision.action !== 'LISTEN' && decision.currentIssueTitle) {
     const { data: existingIssues } = await db
       .from('room_issues')
       .select('id, title, status')
       .eq('session_id', id)
 
-    // Re-use an issue the room is already on rather than filing another copy.
-    // Every IDENTIFY_ISSUE used to insert unconditionally, and a single session
-    // accumulated four rows for one dispute — three with identical titles, one
-    // of them marked agreed while a different one was "current". The final
-    // report is built from these, so the duplicates are not cosmetic.
-    const existing = findMatchingIssue(
-      decision.currentIssueTitle,
-      (existingIssues ?? []).map((i) => ({ id: i.id as string, title: String(i.title) })),
-      access.session.current_issue_id
-    )
+    const outcome = decideIssueOutcome({
+      action: decision.action,
+      title: decision.currentIssueTitle,
+      existing: (existingIssues ?? []).map((i) => ({ id: i.id as string, title: String(i.title) })),
+      currentIssueId: access.session.current_issue_id,
+    })
 
-    if (existing) {
-      newIssueId = existing.id
-      await db.from('room_sessions').update({ current_issue_id: existing.id }).eq('id', id)
-    } else {
+    if (outcome.kind === 'reuse') {
+      newIssueId = outcome.id
+      if (outcome.id !== access.session.current_issue_id) {
+        await db.from('room_sessions').update({ current_issue_id: outcome.id }).eq('id', id)
+      }
+    } else if (outcome.kind === 'create') {
       const { data: issueRow } = await db
         .from('room_issues')
         .insert({

@@ -288,7 +288,7 @@ async function main() {
     }
 
     const { decision } = await res.json() as {
-      decision: { action: string; reasoning: string; spokenText?: string }
+      decision: { action: string; reasoning: string; spokenText?: string; currentIssueTitle?: string }
     }
 
     if (decision.action === 'LISTEN') {
@@ -297,6 +297,12 @@ async function main() {
     } else {
       spoken++
       console.log(`    ${CYAN}Urushi${RESET} ${DIM}[${decision.action}]${RESET} ${decision.spokenText}`)
+      // Printed because it is the field most likely to be silently discarded:
+      // it is returned on any action but was only ever acted on for
+      // IDENTIFY_ISSUE, so a named issue could vanish without a trace.
+      if (decision.currentIssueTitle) {
+        console.log(`      ${DIM}issueTitle: "${decision.currentIssueTitle}"${RESET}`)
+      }
     }
   }
 
