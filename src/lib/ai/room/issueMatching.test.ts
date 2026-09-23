@@ -127,6 +127,32 @@ describe('decideIssueOutcome', () => {
     })).toEqual({ kind: 'reuse', id: 'i1' })
   })
 
+  it('does not file the opening phase as the room\'s dispute', () => {
+    // From the first live session after issue-capture was widened: during the
+    // opening a CLARIFY returned "Mediation not started yet" as its issue title,
+    // and it was recorded as the dispute — in the artefact participants keep.
+    expect(decideIssueOutcome({
+      action: 'CLARIFY', title: 'Mediation not started yet',
+      existing: [], mediationStarted: false,
+    })).toEqual({ kind: 'none' })
+  })
+
+  it('still lets IDENTIFY_ISSUE name an issue during the opening', () => {
+    // That action is the model explicitly saying "this is the issue", which is
+    // different from it labelling the moment.
+    expect(decideIssueOutcome({
+      action: 'IDENTIFY_ISSUE', title: 'Workload split',
+      existing: [], mediationStarted: false,
+    })).toEqual({ kind: 'create' })
+  })
+
+  it('captures an issue named on any action once mediation is under way', () => {
+    expect(decideIssueOutcome({
+      action: 'GIVE_VERDICT', title: 'Missed deadline',
+      existing: [], mediationStarted: true,
+    })).toEqual({ kind: 'create' })
+  })
+
   it('ignores LISTEN and empty titles', () => {
     expect(decideIssueOutcome({ action: 'LISTEN', title: 'Workload', existing: open }))
       .toEqual({ kind: 'none' })

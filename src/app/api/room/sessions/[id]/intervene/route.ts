@@ -267,6 +267,7 @@ export async function POST(
       title: decision.currentIssueTitle,
       existing: (existingIssues ?? []).map((i) => ({ id: i.id as string, title: String(i.title) })),
       currentIssueId: access.session.current_issue_id,
+      mediationStarted,
     })
 
     if (outcome.kind === 'reuse') {

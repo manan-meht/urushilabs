@@ -156,6 +156,16 @@ export interface IssueDecisionInput {
   title?: string
   existing: readonly MatchableIssue[]
   currentIssueId?: string | null
+  /**
+   * Whether the group is actually discussing the dispute yet.
+   *
+   * Before that, Urushi is still opening the conversation, and the model fills
+   * currentIssueTitle with whatever describes the moment. The first live session
+   * after issue-capture was widened filed an issue called "Mediation not started
+   * yet" — a phase label, recorded as the room's dispute, in the artefact
+   * participants keep.
+   */
+  mediationStarted?: boolean
 }
 
 /**
@@ -174,18 +184,27 @@ export interface IssueDecisionInput {
  * re-creates the duplicate rows this module exists to prevent.
  */
 export function decideIssueOutcome(input: IssueDecisionInput): IssueOutcome {
-  const { action, title, existing, currentIssueId } = input
+  const { action, title, existing, currentIssueId, mediationStarted } = input
 
   if (action === 'LISTEN' || !title || !title.trim()) return { kind: 'none' }
 
   const match = findMatchingIssue(title, existing, currentIssueId)
   if (match) return { kind: 'reuse', id: match.id }
 
-  // `existing.length === 0`, not `!currentIssueId`. MOVE_TO_NEXT_ISSUE nulls
-  // current_issue_id, so "nothing is open" is true again every time the room
-  // moves on — and any passing label then opened another row. One replay
+  // IDENTIFY_ISSUE is the model explicitly saying "this is the issue", so it may
+  // open one at any point, including during the opening.
+  if (action === 'IDENTIFY_ISSUE') return { kind: 'create' }
+
+  // Every other action may open only the FIRST issue of a session, and only once
+  // the room is actually arguing. `existing.length === 0` rather than
+  // `!currentIssueId`, because MOVE_TO_NEXT_ISSUE nulls current_issue_id and
+  // "nothing is open" is true again every time the room moves on — a replay
   // produced three rows for one dispute that way.
-  if (action === 'IDENTIFY_ISSUE' || existing.length === 0) return { kind: 'create' }
+  //
+  // The mediationStarted half was added after the first live session: during the
+  // opening, a CLARIFY returned "Mediation not started yet" as its issue title
+  // and this rule dutifully filed it as the room's dispute.
+  if (existing.length === 0 && mediationStarted !== false) return { kind: 'create' }
 
   return { kind: 'none' }
 }
