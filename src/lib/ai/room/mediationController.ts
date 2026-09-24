@@ -49,6 +49,26 @@ export const InterventionDecisionSchema = z.object({
 
 export type InterventionDecision = z.infer<typeof InterventionDecisionSchema>
 
+/**
+ * What the call cost, attached to the decision.
+ *
+ * The API returns this on every response and it was being discarded, which is
+ * why no mediation has ever had a recorded cost. Optional because the fast
+ * paths — a trivial utterance, demo mode, a cooldown — never call the model at
+ * all, and reporting zero tokens for those is accurate.
+ */
+export interface DecisionUsage {
+  model: string
+  inputTokens: number
+  outputTokens: number
+  cachedInputTokens: number
+}
+
+export interface DecisionResult {
+  decision: InterventionDecision
+  usage?: DecisionUsage
+}
+
 export interface RoomTranscriptEntry {
   speakerName: string
   content: string
@@ -215,7 +235,7 @@ async function callWithRetry(apiKey: string, body: unknown): Promise<Response> {
   throw new Error('OpenAI mediation controller failed after retry.')
 }
 
-export async function decideIntervention(ctx: MediationContext): Promise<InterventionDecision> {
+export async function decideIntervention(ctx: MediationContext): Promise<DecisionResult> {
   // Being asked a direct question and getting silence reads as broken, so a
   // direct address skips both shortcuts below: a short "Urushi?" would otherwise
   // be dismissed as trivial, and the cooldown would swallow follow-up questions.
@@ -229,13 +249,13 @@ export async function decideIntervention(ctx: MediationContext): Promise<Interve
     isTrivialUtterance(ctx.latestUtterance.content) &&
     !detectEscalationSignal(ctx.latestUtterance.content)
   ) {
-    return { action: 'LISTEN', reasoning: 'Trivial acknowledgement — no mediation value in interrupting.' }
+    return { decision: { action: 'LISTEN', reasoning: 'Trivial acknowledgement — no mediation value in interrupting.' } }
   }
 
   const { DEMO_MODE, OPENAI_API_KEY, OPENAI_MODEL } = getEnv()
 
   if (DEMO_MODE) {
-    return { action: 'LISTEN', reasoning: 'Demo mode — Urushi listens by default; no live model call is made.' }
+    return { decision: { action: 'LISTEN', reasoning: 'Demo mode — Urushi listens by default; no live model call is made.' } }
   }
 
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.')
@@ -250,9 +270,26 @@ export async function decideIntervention(ctx: MediationContext): Promise<Interve
     temperature: 0.2,
   })
 
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+  const data = await res.json() as {
+    choices?: Array<{ message?: { content?: string } }>
+    usage?: {
+      prompt_tokens?: number
+      completion_tokens?: number
+      prompt_tokens_details?: { cached_tokens?: number }
+    }
+  }
   const raw = data.choices?.[0]?.message?.content
   if (!raw) throw new Error('Empty response from OpenAI.')
+
+  const usage: DecisionUsage = {
+    model: OPENAI_MODEL,
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+    // Reported when a prompt prefix was served from cache. Worth recording
+    // separately: the system prompt is identical across a session, so the
+    // cache-hit rate is the difference between a cheap session and a dear one.
+    cachedInputTokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,
+  }
 
   let json: unknown
   try {
@@ -268,7 +305,7 @@ export async function decideIntervention(ctx: MediationContext): Promise<Interve
 
   // A person who asked a direct question gets an answer regardless of how
   // recently Urushi last spoke.
-  if (directlyAddressed) return parsed.data
+  if (directlyAddressed) return { decision: parsed.data, usage }
 
   const finalAction = enforceCooldown({
     proposedAction: parsed.data.action,
@@ -276,8 +313,11 @@ export async function decideIntervention(ctx: MediationContext): Promise<Interve
   })
 
   if (finalAction !== parsed.data.action) {
-    return { action: finalAction, reasoning: 'Cooldown — Urushi intervened recently; continuing to listen.' }
+    return {
+      decision: { action: finalAction, reasoning: 'Cooldown — Urushi intervened recently; continuing to listen.' },
+      usage,
+    }
   }
 
-  return parsed.data
+  return { decision: parsed.data, usage }
 }

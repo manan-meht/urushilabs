@@ -11,6 +11,7 @@ import { detectProfanityObjection } from '@/lib/conversation/profanityObjection'
 import { disableProfanity } from '@/lib/conversation/acceptance'
 import { conversationSettingsToRow } from '@/lib/conversation/settings'
 import { trackRoomEvent, ROOM_ANALYTICS_EVENTS } from '@/lib/analytics/roomEvents'
+import { costOf } from '@/lib/billing/modelCosts'
 import type { DbRoomParticipant, DbRoomTranscriptSegment } from '@/lib/db/types'
 
 const RECENT_TRANSCRIPT_WINDOW = 20
@@ -192,7 +193,7 @@ export async function POST(
   const participantTurns = orderedSegments.filter((s) => s.role === 'participant').length
   const mediationStarted = Boolean(access.session.current_issue_id) || participantTurns >= SUBSTANTIVE_TURN_COUNT
 
-  const decision = await decideIntervention({
+  const { decision, usage } = await decideIntervention({
     // Already resolved above for the profanity-objection check, and until now
     // never passed any further — so the personality and language the room agreed
     // to shaped nothing the room actually heard.
@@ -219,6 +220,33 @@ export async function POST(
     mediationStarted,
     speakersIdentified,
   })
+
+  // What this call cost, recorded beside the work rather than in its way.
+  //
+  // Deliberately not awaited into the response path and deliberately swallowing
+  // its own errors: a mediation must not fail, or slow down, because
+  // bookkeeping did. The previous generation of this — increment_case_token_usage
+  // writing to a column that does not exist — failed silently for the opposite
+  // reason, so the failure is at least logged here.
+  if (usage) {
+    void (async () => {
+      try {
+        const { error } = await db.rpc('record_room_usage', {
+          p_session_id: id,
+          p_case_id: access.caseId,
+          p_model: usage.model,
+          p_input_tokens: usage.inputTokens,
+          p_cached_input_tokens: usage.cachedInputTokens,
+          p_output_tokens: usage.outputTokens,
+          p_cost_usd: costOf(usage.model, usage),
+          p_spoke: decision.action !== 'LISTEN',
+        })
+        if (error) console.error('[room/intervene] usage recording failed:', error.message)
+      } catch (err) {
+        console.error('[room/intervene] usage recording threw:', err instanceof Error ? err.message : err)
+      }
+    })()
+  }
 
   const { data: interventionRow, error: interventionError } = await db
     .from('room_interventions')

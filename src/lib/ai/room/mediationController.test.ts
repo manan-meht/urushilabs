@@ -32,14 +32,14 @@ beforeEach(() => {
 describe('decideIntervention — trivial utterance fast path', () => {
   it('returns LISTEN without any network call for a bare acknowledgement', async () => {
     envWith({})
-    const decision = await decideIntervention({ ...baseCtx, latestUtterance: { speakerName: 'Sonam', content: 'yes' } })
+    const { decision } = await decideIntervention({ ...baseCtx, latestUtterance: { speakerName: 'Sonam', content: 'yes' } })
     expect(decision.action).toBe('LISTEN')
     expect(fetch).not.toHaveBeenCalled()
   })
 
   it('does not treat a hostile utterance as a trivial acknowledgement', async () => {
     envWith({ DEMO_MODE: true })
-    const decision = await decideIntervention({ ...baseCtx, latestUtterance: { speakerName: 'Sonam', content: 'You are pathetic.' } })
+    const { decision } = await decideIntervention({ ...baseCtx, latestUtterance: { speakerName: 'Sonam', content: 'You are pathetic.' } })
     // It still resolves to LISTEN here (demo mode), but via the demo branch's reasoning,
     // not the trivial-utterance fast path — confirming escalation-flavoured text isn't
     // silently swallowed by the "yes/no/right" shortcut.
@@ -51,7 +51,7 @@ describe('decideIntervention — trivial utterance fast path', () => {
 describe('decideIntervention — demo mode', () => {
   it('returns LISTEN without a network call', async () => {
     envWith({ DEMO_MODE: true })
-    const decision = await decideIntervention(baseCtx)
+    const { decision } = await decideIntervention(baseCtx)
     expect(decision.action).toBe('LISTEN')
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -74,7 +74,7 @@ describe('decideIntervention — live model call', () => {
       }),
     } as Response)
 
-    const decision = await decideIntervention(baseCtx)
+    const { decision } = await decideIntervention(baseCtx)
     expect(decision.action).toBe('CLARIFY')
     expect(fetch).toHaveBeenCalledOnce()
   })
@@ -88,7 +88,7 @@ describe('decideIntervention — live model call', () => {
       }),
     } as Response)
 
-    const decision = await decideIntervention({ ...baseCtx, secondsSinceLastIntervention: 2 })
+    const { decision } = await decideIntervention({ ...baseCtx, secondsSinceLastIntervention: 2 })
     expect(decision.action).toBe('LISTEN')
     expect(decision.reasoning).toMatch(/cooldown/i)
   })
@@ -102,7 +102,7 @@ describe('decideIntervention — live model call', () => {
       }),
     } as Response)
 
-    const decision = await decideIntervention({ ...baseCtx, secondsSinceLastIntervention: 1 })
+    const { decision } = await decideIntervention({ ...baseCtx, secondsSinceLastIntervention: 1 })
     expect(decision.action).toBe('DEESCALATE')
   })
 
@@ -134,7 +134,7 @@ describe('decideIntervention — live model call', () => {
         }),
       } as Response)
 
-    const decision = await decideIntervention(baseCtx)
+    const { decision } = await decideIntervention(baseCtx)
     expect(decision.action).toBe('CLARIFY')
     expect(fetch).toHaveBeenCalledTimes(2)
   })
@@ -163,7 +163,7 @@ describe('decideIntervention — live model call', () => {
       }),
     } as Response)
 
-    const decision = await decideIntervention(baseCtx)
+    const { decision } = await decideIntervention(baseCtx)
     expect(decision.action).toBe('LISTEN')
     expect(decision.emergingAgreement).toBeUndefined()
   })
