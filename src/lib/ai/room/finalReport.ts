@@ -39,11 +39,7 @@ export interface RoomFinalReportContext {
   issueResolutions: Array<{ title: string; status: string; resolution?: string }>
   confirmedAgreements: string[]
   transcriptExcerpt: Array<{ speakerName: string; content: string }>
-  /**
-   * Optional so that callers with no case to read settings from keep the
-   * pre-persona behaviour exactly.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }
 
 export interface RoomFinalReportResult {

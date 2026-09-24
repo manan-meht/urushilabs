@@ -4,6 +4,7 @@ import { getServiceClient } from '@/lib/db/client'
 import { encryptSummaryToDb, decryptSummaryFromDb } from '@/lib/crypto'
 import { IntakeCompleteSchema } from '@/lib/validation/schemas'
 import { runAnalysis, MEDIATION_PROMPT_VERSION } from '@/lib/ai/analysis'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import type { DbSubmission } from '@/lib/db/types'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 
@@ -147,12 +148,20 @@ export async function POST(req: NextRequest) {
               const recipientSummary = submissionMap.get(recipientP.id)
               if (!initiatorSummary || !recipientSummary) throw new Error('Missing submissions')
 
+              // The same analysis reached through /api/cases/[id]/analyse has
+              // always passed these; this path never did, so an invited case
+              // that chose the Straight Shooter was analysed by a mediator with
+              // no personality, language or register at all — silently, since
+              // the persona was omitted rather than defaulted.
+              const conversationSettings = await getEffectiveSettings(caseId)
+
               const { report, inputTokens: analysisInputTokens, outputTokens: analysisOutputTokens } = await runAnalysis({
                 initiatorName: caseRow.initiator_name,
                 recipientName: caseRow.recipient_name,
                 topic: caseRow.topic,
                 initiatorSummary,
                 recipientSummary,
+                settings: conversationSettings,
               })
 
               if (analysisInputTokens > 0 || analysisOutputTokens > 0) {

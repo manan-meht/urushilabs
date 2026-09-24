@@ -44,11 +44,7 @@ export interface SharedUnderstandingContext {
   topic: string
   personASummaries: Array<{ round: number; summary: string }>
   personBSummaries: Array<{ round: number; summary: string }>
-  /**
-   * Optional so that callers with no case to read settings from keep the
-   * pre-persona behaviour exactly.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }
 
 export interface SharedUnderstandingResult {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { SharedReportSchema, SAFETY_CATEGORIES, buildMediationSystemPrompt } from './mediationPrompt'
 import { MOCK_REPORT } from './mockReport'
+import { normalizeConversationSettings } from '@/lib/conversation/settings'
 
 describe('SharedReportSchema', () => {
   it('validates the mock report without errors', () => {
@@ -34,7 +35,7 @@ describe('SharedReportSchema', () => {
 })
 
 describe('buildMediationSystemPrompt — Top-Line Summary requirements', () => {
-  const prompt = buildMediationSystemPrompt()
+  const prompt = buildMediationSystemPrompt(normalizeConversationSettings({}))
 
   it('requests a detailed explanation of the central problem', () => {
     expect(prompt).toMatch(/Central Problem/i)

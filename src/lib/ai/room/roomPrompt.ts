@@ -14,12 +14,7 @@ export interface RoomPromptContext {
   topic: string
   contextSummary?: string
   participantNames: string[]
-  /**
-   * The conversation's agreed language, personality and profanity setting.
-   * Optional so a caller that has not been updated keeps working — it simply
-   * gets the pre-existing room persona with no shared foundation.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }
 
 export function buildRoomSystemInstructions(ctx: RoomPromptContext): string {

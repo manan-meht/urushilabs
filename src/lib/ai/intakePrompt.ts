@@ -14,11 +14,7 @@ export interface IntakeContext {
   role: 'initiator' | 'recipient'
   topic: string
   otherPartyName: string
-  /**
-   * Optional so that callers with no case to read settings from — tests, and any
-   * entry point not yet wired — keep the pre-persona behaviour exactly.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }
 
 const SpecificIncidentSchema = z

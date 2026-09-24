@@ -22,11 +22,7 @@ export async function reviewMessage(opts: {
   otherName: string
   topic: string
   content: string
-  /**
-   * Optional so that callers with no case to read settings from keep the
-   * pre-persona behaviour exactly.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }): Promise<MessageReview> {
   const { OPENAI_API_KEY, OPENAI_MODEL, DEMO_MODE } = getEnv()
 

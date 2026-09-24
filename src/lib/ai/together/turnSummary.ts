@@ -14,11 +14,7 @@ export interface TurnSummaryContext {
   roundNumber: number
   messages: Array<{ content: string; isVoice: boolean }>
   previousSummaries?: Array<{ speaker: string; summary: string; round: number }>
-  /**
-   * Optional so that callers with no case to read settings from keep the
-   * pre-persona behaviour exactly.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }
 
 export interface TurnSummaryResult {

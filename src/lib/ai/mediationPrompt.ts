@@ -164,14 +164,10 @@ export interface MediationContext {
   initiatorSummary: string
   /** JSON string produced from the intake summary or a legacy prose summary. */
   recipientSummary: string
-  /**
-   * Optional so that callers with no case to read settings from keep the
-   * pre-persona behaviour exactly.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }
 
-export function buildMediationSystemPrompt(settings?: ConversationSettings): string {
+export function buildMediationSystemPrompt(settings: ConversationSettings): string {
   // Optional: a caller without a case to read settings from keeps the original
   // prompt byte for byte.
   const persona = settings ? `${buildMediatorPersona(settings, { written: true, record: true })}\n\n` : ''

@@ -62,11 +62,7 @@ export interface FinalReportContext {
     personBPosition?: string
   }>
   allMessages: Array<{ speaker: string; content: string; round: number }>
-  /**
-   * Optional so that callers with no case to read settings from keep the
-   * pre-persona behaviour exactly.
-   */
-  settings?: ConversationSettings
+  settings: ConversationSettings
 }
 
 export interface FinalReportResult {

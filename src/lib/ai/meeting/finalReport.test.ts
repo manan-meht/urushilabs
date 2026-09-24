@@ -4,8 +4,10 @@ const mockGetEnv = vi.fn()
 vi.mock('@/lib/env', () => ({ getEnv: () => mockGetEnv() }))
 
 import { generateMeetingFinalReport, type MeetingFinalReportContext } from './finalReport'
+import { normalizeConversationSettings } from '@/lib/conversation/settings'
 
 const ctx: MeetingFinalReportContext = {
+  settings: normalizeConversationSettings({}),
   topic: 'Division of business responsibilities',
   participantNames: ['Manan', 'Sonam'],
   conversationSummary: 'They discussed how decisions get made and agreed on a response-time rule.',
