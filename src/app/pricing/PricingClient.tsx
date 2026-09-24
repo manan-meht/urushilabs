@@ -234,40 +234,29 @@ export function PricingClient({ roomsAvailable, followUpsAvailable, totalRoomsCr
         </p>
       </div>
 
-      {/* Payment methods */}
+      {/*
+        There is no payment-method picker here on purpose.
+
+        There used to be one: a hardcoded list of UPI, RuPay, Netbanking and
+        Wallets, with UPI rendered pre-selected. None of it was wired to
+        anything — no state, no handlers — and it sat above a note saying
+        payment was "powered by Razorpay". A buyer was told they were paying by
+        UPI through Razorpay and then sent to a Stripe card checkout. UPI is not
+        available at all.
+
+        Which methods exist depends on the gateway, the account and the buyer's
+        country, and only the gateway knows all three. Its hosted checkout shows
+        the real list; anything shown here can only ever be a guess that
+        contradicts it.
+      */}
       <div className="mb-6">
-        <h3 className="font-medium text-on-surface mb-3">Select Payment Method</h3>
-        <div className="flex flex-col gap-2">
-          {[
-            { icon: 'account_balance_wallet', label: 'UPI (GPay, PhonePe, BHIM)' },
-            { icon: 'credit_card', label: 'Card (Visa, Mastercard, RuPay)' },
-            { icon: 'account_balance', label: 'Netbanking' },
-            { icon: 'wallet', label: 'Wallets' },
-          ].map((method, i) => (
-            <div
-              key={method.label}
-              className={`flex items-center gap-3 p-3 rounded-xl border ${
-                i === 0 ? 'border-primary bg-primary-container/10' : 'border-outline-variant bg-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-on-surface-variant text-[20px]">{method.icon}</span>
-              <span className="text-label-md text-on-surface flex-1">{method.label}</span>
-              {i === 0 ? (
-                <span className="w-4 h-4 rounded-full border-2 border-primary flex items-center justify-center">
-                  <span className="w-2 h-2 rounded-full bg-primary" />
-                </span>
-              ) : (
-                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">chevron_right</span>
-              )}
-            </div>
-          ))}
-        </div>
-        <p className="text-label-sm text-on-surface-variant text-center mt-3 flex items-center justify-center gap-1">
+        <p className="text-label-sm text-on-surface-variant text-center flex items-center justify-center gap-1">
           <span className="material-symbols-outlined text-[14px]">lock</span>
-          Secure payment powered by Razorpay
+          {market === 'IN' ? 'Secure payment powered by Razorpay' : 'Secure payment powered by Stripe'}
         </p>
         <p className="text-label-sm text-on-surface-variant text-center mt-1 max-w-xs mx-auto">
-          By completing this purchase, you agree to our Terms of Service. Your personal conflict data is encrypted and never shared with payment processors.
+          You will be taken to a secure checkout page to choose how you pay. Your personal conflict
+          data is encrypted and never shared with payment processors.
         </p>
       </div>
 
