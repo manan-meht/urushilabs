@@ -80,8 +80,25 @@ export default async function DashboardPage() {
               <p className="text-label-sm text-on-surface-variant">{credits.total_rooms_created} conversation{credits.total_rooms_created !== 1 ? 's' : ''} started</p>
             </div>
           </div>
-          {credits.rooms_available === 0 && (
-            <Link href="/pricing" className="text-label-sm text-primary font-medium">
+          {/*
+            Always shown. This used to appear only at zero credits, so the one
+            place a balance is displayed offered no way to act on it until
+            someone was completely out — which is the moment they are mid-task
+            and least want a purchase flow.
+
+            The emphasis still changes: a filled button when they are blocked,
+            a quiet link when they are not, so it reads as available rather
+            than as a nag.
+          */}
+          {credits.rooms_available === 0 ? (
+            <Link
+              href="/pricing"
+              className="shrink-0 bg-primary text-on-primary rounded-full px-4 py-2 text-label-sm font-medium"
+            >
+              Buy credits
+            </Link>
+          ) : (
+            <Link href="/pricing" className="shrink-0 text-label-sm text-primary font-medium">
               Buy more →
             </Link>
           )}
