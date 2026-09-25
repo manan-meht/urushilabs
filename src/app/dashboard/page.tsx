@@ -5,6 +5,7 @@ import { getOrCreateCredits } from '@/lib/db/credits'
 import { SiteHeader, SiteFooter } from '@/components/SiteHeader'
 import Link from 'next/link'
 import { CaseList } from './CaseList'
+import { DeleteAccount } from './DeleteAccount'
 
 export default async function DashboardPage() {
   const user = await getUser()
@@ -124,6 +125,8 @@ export default async function DashboardPage() {
             </Link>
           </div>
         )}
+
+        <DeleteAccount />
       </main>
       <SiteFooter />
     </div>

@@ -6,6 +6,20 @@
   "observability": {
     "enabled": true
   },
+  // Declared intent for /api/cron/reconcile-payments: find Stripe payments that
+  // are paid but still `pending` here, which is what happens whenever the webhook
+  // cannot be delivered (a missing STRIPE_WEBHOOK_SECRET did exactly this in
+  // production and went unreported for an hour). Every 15 minutes, against a
+  // 10-minute settlement grace, bounds how long a paid customer can be waiting
+  // with nothing granted.
+  //
+  // This does NOT work on its own yet: a cron trigger invokes the Worker's
+  // `scheduled` handler, and OpenNext's generated worker exports only `fetch`.
+  // Until a custom entrypoint wraps it and fetches the route, the schedule has to
+  // come from an external caller sending `Authorization: Bearer $CRON_SECRET`.
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
   "compatibility_flags": [
     "nodejs_compat"
   ],
@@ -21,13 +35,13 @@
     "OPENAI_MODEL": "gpt-6-luna",
     "OPENAI_TRANSCRIPTION_MODEL": "whisper-1",
     "DEMO_MODE": "false",
-    "LIVE_MEDIATION_ENABLED": "false",
+    "LIVE_MEDIATION_ENABLED": "true",
     "LIVE_MEDIATION_ALLOWED_EMAILS": "mananenator@gmail.com",
     "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1-mini",
     "OPENAI_REALTIME_TRANSCRIBE_MODEL": "gpt-4o-transcribe",
     "OPENAI_REALTIME_VOICE": "marin",
     "OPENAI_REALTIME_TRANSCRIBE_LANGUAGES": "en,hi",
-    "MEETING_MEDIATION_ENABLED": "false",
+    "MEETING_MEDIATION_ENABLED": "true",
     "MEETING_MEDIATION_ALLOWED_EMAILS": "mananenator@gmail.com",
     "RECALL_API_BASE_URL": "https://ap-northeast-1.recall.ai/api/v1",
     "RECALL_WEBHOOK_URL": "https://urushilabs.com/api/integrations/recall/webhook",

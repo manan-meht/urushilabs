@@ -41,6 +41,11 @@ export interface PricePoint {
  * conventional and necessary — Stripe's minimum charge is around $0.50 and
  * per-transaction fees eat a much larger share of a $2.39 sale than of a ₹199
  * one.
+ *
+ * All three currencies are confirmed, not placeholder: ₹199/₹499, S$4/S$9 and
+ * US$3/US$7. Worth knowing that Stripe's fixed per-transaction fee is close to
+ * 20% of revenue on a single US$3 pack, which is why the three-pack matters far
+ * more to the margin than its headline discount suggests.
  */
 export const PRICING: Record<BillingMarket, Record<ProductKey, PricePoint>> = {
   IN: {

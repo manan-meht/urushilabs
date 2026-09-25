@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/db/client'
 import { PRODUCTS, type ProductKey } from '@/lib/db/credits'
 import { retrieveCheckoutSession, verifyStripeWebhookSignature } from '@/lib/billing/providers/stripe'
+import { handleChargeDisputeCreated, handleChargeRefunded } from '@/lib/billing/refunds'
 
 /**
- * Stripe's callback, and the only thing that grants credits.
+ * Stripe's callback, and the only thing that grants or reverses credits.
  *
  * The browser returning from checkout does NOT credit anything. That redirect
  * is lost whenever someone closes the tab, loses signal, or is bounced through
@@ -31,11 +32,32 @@ export async function POST(req: NextRequest) {
   // Everything below returns 200, including events we ignore or have already
   // handled. A non-2xx tells Stripe to retry, and retrying something we
   // deliberately skipped just repeats forever.
-  if (verified.eventType !== 'checkout.session.completed') {
+  if (
+    verified.eventType !== 'checkout.session.completed' &&
+    verified.eventType !== 'charge.refunded' &&
+    verified.eventType !== 'charge.dispute.created'
+  ) {
     return NextResponse.json({ received: true, result: 'ignored' })
   }
 
   try {
+    // Money going back out, handled under the same rule as money coming in: the
+    // only retryable failure is the one where the credit ledger disagrees with
+    // what the customer's card now says.
+    if (verified.eventType === 'charge.refunded' || verified.eventType === 'charge.dispute.created') {
+      const handled =
+        verified.eventType === 'charge.refunded'
+          ? await handleChargeRefunded(verified.payload)
+          : await handleChargeDisputeCreated(verified.payload)
+
+      if (handled.retry) {
+        console.error(`[stripe webhook] ${verified.eventType} failed: ${handled.message}`)
+        return new NextResponse('Reversal failed', { status: 500 })
+      }
+
+      return NextResponse.json({ received: true, result: handled.result })
+    }
+
     const event = verified.payload as { data?: { object?: { id?: string } } }
     const sessionId = event.data?.object?.id
     if (!sessionId) return NextResponse.json({ received: true, result: 'ignored' })
@@ -64,6 +86,25 @@ export async function POST(req: NextRequest) {
     if (!payment) {
       console.error(`[stripe webhook] payment ${paymentId} not found.`)
       return NextResponse.json({ received: true, result: 'unknown_payment' })
+    }
+
+    // The buyer deleted their account between paying and this event arriving.
+    //
+    // payments.user_id became nullable in migration 020, which anonymises
+    // financial records rather than deleting them — tax retention outlives a
+    // deletion request, but the identity does not. Passing the NULL through
+    // would fail add_user_credits on user_credits' primary key and, because
+    // failed crediting answers 500 to get a retry, Stripe would redeliver this
+    // forever against an account that no longer exists.
+    //
+    // 200, so the retries stop. Logged as an error because money was taken and
+    // nothing can be granted for it — that is a refund a human has to make.
+    if (!payment.user_id) {
+      console.error(
+        `[stripe webhook] payment ${paymentId} has no user (account deleted). ` +
+        'Money was taken and no credits can be granted — needs a manual refund.'
+      )
+      return NextResponse.json({ received: true, result: 'user_deleted' })
     }
 
     const product = PRODUCTS[payment.product_key as ProductKey]
