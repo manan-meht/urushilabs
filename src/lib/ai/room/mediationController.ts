@@ -193,6 +193,33 @@ export interface MediationContext {
 }
 
 /**
+ * Per-model request parameters, because they are not interchangeable.
+ *
+ * The newer families reject outright what the older ones require. gpt-6-luna
+ * returns 400 for `max_tokens` (it wants `max_completion_tokens`) and 400 again
+ * for any `temperature` other than the default. Switching model by environment
+ * variable alone would therefore have broken every intervention call — which is
+ * how this was found, by trying it against the real API before changing config.
+ *
+ * Losing temperature control matters more than it looks. 0.2 was chosen because
+ * this is a judgement task and we have already watched verdicts flip between
+ * runs on identical input at that setting. The newer models decide their own
+ * sampling; consistency has to come from the prompt instead.
+ */
+function completionLimits(model: string): Record<string, unknown> {
+  const isReasoningFamily = /^gpt-[56]\./.test(model) || /^gpt-6-/.test(model) || /^o\d/.test(model)
+
+  return isReasoningFamily
+    // 2500, not 900. Reasoning tokens are drawn from this same budget before
+    // any content is produced, so a limit sized for the answer alone gets spent
+    // entirely on thinking and returns an empty message. Observed live: two
+    // calls in a thirteen-step replay came back with no content at 900, and
+    // averaged ~500 output tokens when they succeeded.
+    ? { max_completion_tokens: 2500 }
+    : { max_tokens: 400, temperature: 0.2 }
+}
+
+/**
  * One retry on the failures that are known to be transient.
  *
  * A rate limit used to throw straight out of here, which surfaces as a 500 and
@@ -266,21 +293,18 @@ export async function decideIntervention(ctx: MediationContext): Promise<Decisio
     model: OPENAI_MODEL,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' },
-    max_tokens: 400,
-    temperature: 0.2,
+    ...completionLimits(OPENAI_MODEL),
   })
 
   const data = await res.json() as {
-    choices?: Array<{ message?: { content?: string } }>
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
     usage?: {
       prompt_tokens?: number
       completion_tokens?: number
       prompt_tokens_details?: { cached_tokens?: number }
+      completion_tokens_details?: { reasoning_tokens?: number }
     }
   }
-  const raw = data.choices?.[0]?.message?.content
-  if (!raw) throw new Error('Empty response from OpenAI.')
-
   const usage: DecisionUsage = {
     model: OPENAI_MODEL,
     inputTokens: data.usage?.prompt_tokens ?? 0,
@@ -290,6 +314,25 @@ export async function decideIntervention(ctx: MediationContext): Promise<Decisio
     // cache-hit rate is the difference between a cheap session and a dear one.
     cachedInputTokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,
   }
+
+  const raw = data.choices?.[0]?.message?.content
+  if (!raw) {
+    // A reasoning model that spends its whole budget thinking returns an empty
+    // message. Throwing here surfaces as a 500 and loses the turn, which is the
+    // failure mode this system keeps having to design away: silence is
+    // indistinguishable from a decision to listen. Better to actually listen,
+    // and to say in the record that it was not a choice.
+    console.error(
+      `[mediationController] ${OPENAI_MODEL} returned no content ` +
+      `(finish_reason=${data.choices?.[0]?.finish_reason ?? 'unknown'}, ` +
+      `reasoning_tokens=${data.usage?.completion_tokens_details?.reasoning_tokens ?? 0}). Falling back to LISTEN.`
+    )
+    return {
+      decision: { action: 'LISTEN', reasoning: 'Model returned no decision; staying quiet rather than guessing.' },
+      usage,
+    }
+  }
+
 
   let json: unknown
   try {

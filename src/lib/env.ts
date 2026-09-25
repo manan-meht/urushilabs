@@ -86,7 +86,7 @@ export function getEnv(): EnvConfig {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] ?? '',
     SUPABASE_SERVICE_ROLE_KEY: process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '',
     OPENAI_API_KEY: process.env['OPENAI_API_KEY'] ?? '',
-    OPENAI_MODEL: process.env['OPENAI_MODEL'] ?? 'gpt-4o',
+    OPENAI_MODEL: process.env['OPENAI_MODEL'] ?? 'gpt-6-luna',
     SUBMISSION_ENCRYPTION_KEY: process.env['SUBMISSION_ENCRYPTION_KEY'] ?? '',
     SESSION_SECRET: process.env['SESSION_SECRET'] ?? '',
     CRON_SECRET: process.env['CRON_SECRET'] ?? '',
@@ -102,7 +102,7 @@ export function getEnv(): EnvConfig {
     RAZORPAY_KEY_SECRET: process.env['RAZORPAY_KEY_SECRET'],
     LIVE_MEDIATION_ENABLED: process.env['LIVE_MEDIATION_ENABLED'] === 'true',
     LIVE_MEDIATION_ALLOWED_EMAILS: process.env['LIVE_MEDIATION_ALLOWED_EMAILS'] ?? '',
-    OPENAI_REALTIME_MODEL: process.env['OPENAI_REALTIME_MODEL'] ?? 'gpt-realtime-2.1',
+    OPENAI_REALTIME_MODEL: process.env['OPENAI_REALTIME_MODEL'] ?? 'gpt-realtime-2.1-mini',
     // Defaults to the broadly-available transcription model, not the diarization
     // variant — confirmed against a real account that 'gpt-4o-transcribe-diarize'
     // access is not universal ("Your organization does not have access to this
