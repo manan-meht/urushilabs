@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { getEnv } from '@/lib/env'
 import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
 import type { ConversationSettings } from '@/lib/conversation/settings'
+import { completionParams } from '@/lib/ai/modelParams'
 
 const AgreementSchema = z.object({
   title: z.string().min(1),
@@ -139,8 +140,7 @@ ${formatSummaries(ctx.personBName, ctx.personBSummaries)}`
       model: OPENAI_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       response_format: { type: 'json_object' },
-      max_tokens: 2000,
-      temperature: 0.3,
+      ...completionParams(OPENAI_MODEL, 2000, 0.3),
     }),
   })
 

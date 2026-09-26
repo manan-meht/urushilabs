@@ -7,6 +7,7 @@ import { buildOpeningInstruction, buildFallbackOpening } from '@/lib/ai/room/ope
 import { getConversationSettings } from '@/lib/conversation/getSettings'
 import { SHARED_DEVICE_REF } from '@/lib/conversation/acceptance'
 import type { DbRoomParticipant } from '@/lib/db/types'
+import { completionParams } from '@/lib/ai/modelParams'
 
 /**
  * Generates Urushi's opening line, spoken once when a session goes live.
@@ -102,8 +103,7 @@ export async function POST(
         { role: 'system', content: system },
         { role: 'user', content: buildOpeningInstruction(openingContext) },
       ],
-      max_tokens: 160,
-      temperature: 0.6,
+      ...completionParams(OPENAI_MODEL, 160, 0.6),
     }),
   })
 

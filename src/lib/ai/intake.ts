@@ -5,6 +5,7 @@
 import OpenAI from 'openai'
 import { buildIntakeSystemPrompt, buildSummaryGenerationPrompt, type IntakeContext } from './intakePrompt'
 import { getEnv } from '@/lib/env'
+import { completionParams } from '@/lib/ai/modelParams'
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
@@ -46,8 +47,7 @@ export async function continueIntake(
   const response = await client.chat.completions.create({
     model: OPENAI_MODEL,
     messages,
-    max_tokens: 400,
-    temperature: 0.7,
+    ...completionParams(OPENAI_MODEL, 400, 0.7),
   })
 
   const content = response.choices[0]?.message?.content
@@ -76,8 +76,7 @@ export async function generateIntakeSummary(
     model: OPENAI_MODEL,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
-    max_tokens: 1200,
-    temperature: 0.3,
+    ...completionParams(OPENAI_MODEL, 1200, 0.3),
   })
 
   const content = response.choices[0]?.message?.content

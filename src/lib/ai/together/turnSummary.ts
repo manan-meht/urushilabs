@@ -6,6 +6,7 @@
 import { getEnv } from '@/lib/env'
 import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
 import type { ConversationSettings } from '@/lib/conversation/settings'
+import { completionParams } from '@/lib/ai/modelParams'
 
 export interface TurnSummaryContext {
   speakerName: string
@@ -86,8 +87,7 @@ ${messagesText}`
     body: JSON.stringify({
       model: OPENAI_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      max_tokens: 400,
-      temperature: 0.3,
+      ...completionParams(OPENAI_MODEL, 400, 0.3),
     }),
   })
 

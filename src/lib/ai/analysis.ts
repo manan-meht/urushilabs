@@ -14,6 +14,7 @@ import {
 } from './mediationPrompt'
 import { getEnv } from '@/lib/env'
 import { MOCK_REPORT } from './mockReport'
+import { completionParams } from '@/lib/ai/modelParams'
 
 export interface AnalysisResult {
   report: ValidatedSharedReport
@@ -44,8 +45,7 @@ export async function runAnalysis(ctx: MediationContext): Promise<AnalysisResult
       { role: 'user', content: userMessage },
     ],
     response_format: { type: 'json_object' },
-    max_tokens: 8000,
-    temperature: 0.4,
+    ...completionParams(OPENAI_MODEL, 8000, 0.4),
   })
 
   const finishReason = response.choices[0]?.finish_reason

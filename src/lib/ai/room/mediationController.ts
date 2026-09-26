@@ -10,6 +10,7 @@
 import { z } from 'zod'
 import type { ConversationSettings } from '@/lib/conversation/settings'
 import { getEnv } from '@/lib/env'
+import { completionParams } from '@/lib/ai/modelParams'
 import { detectEscalationSignal, enforceCooldown, isTrivialUtterance } from './interventionGuardrails'
 import { buildInterventionPrompt } from './interventionPrompt'
 
@@ -193,33 +194,6 @@ export interface MediationContext {
 }
 
 /**
- * Per-model request parameters, because they are not interchangeable.
- *
- * The newer families reject outright what the older ones require. gpt-6-luna
- * returns 400 for `max_tokens` (it wants `max_completion_tokens`) and 400 again
- * for any `temperature` other than the default. Switching model by environment
- * variable alone would therefore have broken every intervention call — which is
- * how this was found, by trying it against the real API before changing config.
- *
- * Losing temperature control matters more than it looks. 0.2 was chosen because
- * this is a judgement task and we have already watched verdicts flip between
- * runs on identical input at that setting. The newer models decide their own
- * sampling; consistency has to come from the prompt instead.
- */
-function completionLimits(model: string): Record<string, unknown> {
-  const isReasoningFamily = /^gpt-[56]\./.test(model) || /^gpt-6-/.test(model) || /^o\d/.test(model)
-
-  return isReasoningFamily
-    // 2500, not 900. Reasoning tokens are drawn from this same budget before
-    // any content is produced, so a limit sized for the answer alone gets spent
-    // entirely on thinking and returns an empty message. Observed live: two
-    // calls in a thirteen-step replay came back with no content at 900, and
-    // averaged ~500 output tokens when they succeeded.
-    ? { max_completion_tokens: 2500 }
-    : { max_tokens: 400, temperature: 0.2 }
-}
-
-/**
  * One retry on the failures that are known to be transient.
  *
  * A rate limit used to throw straight out of here, which surfaces as a 500 and
@@ -293,7 +267,7 @@ export async function decideIntervention(ctx: MediationContext): Promise<Decisio
     model: OPENAI_MODEL,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' },
-    ...completionLimits(OPENAI_MODEL),
+    ...completionParams(OPENAI_MODEL, 400, 0.2),
   })
 
   const data = await res.json() as {

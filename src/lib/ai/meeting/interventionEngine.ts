@@ -46,6 +46,7 @@ import { isTrivialUtterance } from './interventionGuardrails'
 import { overrideThresholdMultiplier, type OverrideState } from './overrideCommands'
 import { buildMeetingSystemPrompt } from './personaPrompt'
 import { detectRoomLanguage } from './languageDetection'
+import { completionParams } from '@/lib/ai/modelParams'
 
 export interface InterventionDecision {
   shouldIntervene: boolean
@@ -340,8 +341,7 @@ export async function decideIntervention(ctx: EngineContext): Promise<Interventi
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       response_format: { type: 'json_object' },
       // Decision only — no prose to generate, so this stays small and fast.
-      max_tokens: 160,
-      temperature: 0.1,
+      ...completionParams(OPENAI_MODEL, 160, 0.1),
     }),
   })
 
@@ -422,8 +422,7 @@ Say your piece now.`
       // a paragraph. This is a hard backstop, not the primary length control:
       // the prompt asks for brevity, but models don't reliably self-limit, so
       // the cap plus the sentence-trim below enforce it regardless.
-      max_tokens: 90,
-      temperature: 0.6,
+      ...completionParams(OPENAI_MODEL, 90, 0.6),
     }),
   })
 

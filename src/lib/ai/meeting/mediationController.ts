@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { getEnv } from '@/lib/env'
 import { detectEscalationSignal, enforceCooldown, isTrivialUtterance } from './interventionGuardrails'
 import { buildMeetingInterventionPrompt } from './interventionPrompt'
+import { completionParams } from '@/lib/ai/modelParams'
 
 export const MeetingInterventionActionSchema = z.enum([
   'LISTEN',
@@ -86,8 +87,7 @@ export async function decideMeetingIntervention(ctx: MeetingMediationContext): P
       model: OPENAI_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       response_format: { type: 'json_object' },
-      max_tokens: 400,
-      temperature: 0.2,
+      ...completionParams(OPENAI_MODEL, 400, 0.2),
     }),
   })
 

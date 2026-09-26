@@ -11,6 +11,7 @@ import { getEnv } from '@/lib/env'
 import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
 import type { ConversationSettings } from '@/lib/conversation/settings'
 import type { MeetingFinalReport, SafetyCategory } from '@/lib/db/types'
+import { completionParams } from '@/lib/ai/modelParams'
 
 const FinalReportSchema = z.object({
   whatHappened: z.string().min(1),
@@ -133,8 +134,7 @@ ${transcriptText}`
       model: OPENAI_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       response_format: { type: 'json_object' },
-      max_tokens: 2500,
-      temperature: 0.3,
+      ...completionParams(OPENAI_MODEL, 2500, 0.3),
     }),
   })
 

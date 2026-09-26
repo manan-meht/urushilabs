@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { getEnv } from '@/lib/env'
 import { buildMediatorPersona, buildPersonaLanguageReminder } from '@/lib/ai/persona'
 import type { ConversationSettings } from '@/lib/conversation/settings'
+import { completionParams } from '@/lib/ai/modelParams'
 
 export const MessageReviewSchema = z.object({
   classification: z.enum(['display_as_written', 'offer_reframe', 'block_or_safety_intervention']),
@@ -95,8 +96,7 @@ Review and classify this message.`
       model: OPENAI_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       response_format: { type: 'json_object' },
-      max_tokens: 400,
-      temperature: 0.2,
+      ...completionParams(OPENAI_MODEL, 400, 0.2),
     }),
   })
 

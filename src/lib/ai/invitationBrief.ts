@@ -8,6 +8,7 @@ import { getEnv } from '@/lib/env'
 import { buildMediatorPersona, buildPersonaLanguageReminder } from './persona'
 import type { ConversationSettings } from '@/lib/conversation/settings'
 import type { InvitationBrief } from '@/lib/db/types'
+import { completionParams } from '@/lib/ai/modelParams'
 
 export const INVITATION_BRIEF_VERSION = '1.0'
 
@@ -112,8 +113,7 @@ export async function generateInvitationBrief(ctx: BriefGenerationContext): Prom
         { role: 'user', content: buildBriefUserMessage(ctx) },
       ],
       response_format: { type: 'json_object' },
-      max_tokens: 600,
-      temperature: 0.3,
+      ...completionParams(OPENAI_MODEL, 600, 0.3),
     }),
   })
 
