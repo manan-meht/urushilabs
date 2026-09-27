@@ -163,12 +163,20 @@ describe('buildMediatorPersona — strong language', () => {
   })
 
   it('shows both a permitted and a forbidden use of the same register', () => {
-    const prompt = buildMediatorPersona(settings(shooter))
+    // Asserted against Hinglish specifically: these examples are Hindi, and an
+    // English conversation is deliberately shown neither of them.
+    const prompt = buildMediatorPersona(settings({ ...shooter, language: 'hinglish' }))
     // Untargeted, aimed at the excuse — allowed.
     expect(prompt).toContain("Yeh 'communication gap' wala explanation bullshit hai")
     // Same register, aimed at a person — forbidden.
     expect(prompt).toContain('Tu chutiya hai')
     expect(prompt).toContain('Tum dono chutiye ho')
+  })
+
+  it('shows the same contrast in English, in English', () => {
+    const prompt = buildMediatorPersona(settings({ ...shooter, language: 'english' }))
+    expect(prompt).toContain("That 'communication gap' explanation is bullshit")
+    expect(prompt).toContain('Stop being a fucking idiot')
   })
 
   it('forbids harassment, threats and slurs explicitly', () => {
@@ -179,7 +187,7 @@ describe('buildMediatorPersona — strong language', () => {
   })
 
   it('makes escalation earned rather than automatic', () => {
-    const prompt = buildMediatorPersona(settings(shooter))
+    const prompt = buildMediatorPersona(settings({ ...shooter, language: 'hinglish' }))
     expect(prompt).toContain('Escalation is earned')
     // Disagreement, needing time, or struggling to express yourself are never
     // reasons to swear at someone.
@@ -188,8 +196,17 @@ describe('buildMediatorPersona — strong language', () => {
     expect(prompt).toContain('distress, fear, coercion or abuse')
   })
 
-  it('does not import Delhi expressions into an English conversation', () => {
-    expect(buildMediatorPersona(settings(shooter))).toContain('Do not import Delhi expressions')
+  it('tells a Hinglish room not to import Delhi expressions into English', () => {
+    expect(buildMediatorPersona(settings({ ...shooter, language: 'hinglish' })))
+      .toContain('Do not import Delhi expressions')
+  })
+
+  it('tells an English room to swear in English, without naming what it may not use', () => {
+    // An English room no longer needs that caveat, because the Hindi sections are
+    // stripped rather than argued against.
+    const english = buildMediatorPersona(settings({ ...shooter, language: 'english' }))
+    expect(english).toContain('English only')
+    expect(english).not.toContain('Do not import Delhi expressions')
   })
 
   it('cannot be enabled for a personality that does not offer it', () => {
@@ -326,5 +343,67 @@ describe('the bhenchod exception is narrow', () => {
   it('is absent from records even with everything agreed', () => {
     const record = buildMediatorPersona(settings(shooter), { record: true })
     expect(record).not.toContain('bhenchod')
+  })
+})
+
+describe('an English conversation gets no Hindi profanity at all', () => {
+  const shooter = { personality: 'straight_shooter', allowProfanity: true } as const
+
+  function profanitySection(language: 'english' | 'hindi' | 'hinglish'): string {
+    const p = buildMediatorPersona(settings({ ...shooter, language }))
+    return p.slice(p.indexOf('# Strong language'))
+  }
+
+  it('contains no Hindi or Hinglish anywhere in the section', () => {
+    // Only bhenchod used to be stripped by language. An English room was still
+    // shown "bakwaas"/"bekaar"/"ghanta" in its permitted-word list, two Hinglish
+    // worked examples, and the entire chutiya section — held back by one line at
+    // the bottom saying not to import Delhi expressions. A prose caveat at the
+    // end does not beat concrete vocabulary and examples at the top, which is
+    // the lesson written into three other files here.
+    const english = profanitySection('english').toLowerCase()
+    for (const w of ['bakwaas', 'bekaar', 'ghanta', 'chakkar', 'chutiya', 'bhenchod', 'gaali', 'delhi', 'seedha']) {
+      expect(english, w).not.toContain(w)
+    }
+  })
+
+  it('does not name the forbidden words while forbidding them', () => {
+    // A prohibition that spells a word out has supplied it. The whole reason the
+    // Hindi sections are stripped rather than argued against is that a word which
+    // never appears cannot be reached for.
+    const english = profanitySection('english')
+    expect(english).toContain('Swear in English only')
+    expect(english.toLowerCase()).not.toContain('not "bakwaas"')
+  })
+
+  it('still permits and illustrates English profanity', () => {
+    const english = profanitySection('english')
+    for (const w of ['"fuck"', '"shit"', '"bullshit"', '"crap"']) expect(english, w).toContain(w)
+    expect(english).toContain('Enough of this shit')
+  })
+
+  it('leaves no dangling reference to the stripped sections', () => {
+    // Citing a section the model cannot see invites it to invent what was there.
+    expect(profanitySection('english')).not.toContain('reserved expressions above')
+  })
+
+  it('keeps the whole register for Hindi and Hinglish', () => {
+    for (const language of ['hindi', 'hinglish'] as const) {
+      const sec = profanitySection(language)
+      expect(sec, language).toContain('bakwaas')
+      expect(sec, language).toContain('chutiya mat banao')
+      expect(sec, language).toContain('bhenchod')
+    }
+  })
+
+  it('keeps the target rule identical in both languages', () => {
+    // Splitting the vocabulary must not split the safety boundary.
+    for (const language of ['english', 'hinglish'] as const) {
+      const sec = profanitySection(language)
+      expect(sec, language).toContain('frustration with a SITUATION')
+      expect(sec, language).toContain('never become a personal attack')
+      expect(sec, language).toContain('Position is not a defence')
+      expect(sec, language).toContain('distress, fear, coercion or abuse')
+    }
   })
 })

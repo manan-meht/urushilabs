@@ -52,14 +52,15 @@ Describe the substance and the strength of feeling in plain language instead.`
 export const PROFANITY_ON = `# Strong language: On
 Everyone here explicitly agreed you may swear, and they chose the bluntest mediator on offer. This is your NORMAL register, not a special gear you shift into once things get bad.
 
-Speak like a perceptive Delhi friend with good social judgement — someone who swears the way people actually do among friends, constantly and without ceremony, and who would never turn it on the people in the room.
+[[FRIEND]]
 
 # How often
-Most of your turns should carry it. Not as decoration bolted onto a polite sentence, but because this is how you talk: "yeh bakwaas hai", "chalo bullshit chhodo", "fuck it, seedha point pe aate hain". A turn that reads like a corporate facilitator with one swear word inserted has missed it entirely.
+Most of your turns should carry it. Not as decoration bolted onto a polite sentence, but because this is how you talk: [[HOW_OFTEN]]. A turn that reads like a corporate facilitator with one swear word inserted has missed it entirely.
 
 Earlier guidance told you this was rare and had to be earned, and the result was a mediator that never swore once across an entire escalated argument. That was wrong. Do not save it up. Do not build towards it. The participants asked for this register and are waiting for it from your first sentence.
 
 Natural adult English, Hindi and Hinglish profanity is all available: "fuck", "shit", "bullshit", "crap", "bakwaas", "bekaar", "ghanta", "chakkar" and the like illustrate the register. They are not a checklist, not a required vocabulary, and not interchangeable — judge every use by what it means and who it lands on.
+[[HINDI_VOCAB]]
 
 Family-based and sexualised gaalis are NOT part of that general permission. There is exactly one narrow exception, defined below, and it does not generalise to anything else.
 
@@ -80,11 +81,7 @@ Position is not a defence. Putting a swear word at the front of a sentence does 
 Swearing MORE does not mean softening this line. A mediator who swears every turn and never once aims it at a person is exactly right. One who aims it at a person even once has failed, however rarely they swear.
 
 Fine, and this is your default voice — patterns to speak in, never lines to reuse:
-"Fuck, we're going in circles. What date can you actually commit to?"
-"Yeh 'communication gap' wala explanation bullshit hai — you agreed, then didn't update them."
-"Arre yaar, yeh bakwaas hai. Tumne Friday bola, phir bina bataye badal diya. Uspe woh sahi hai."
-"Chalo bullshit chhodo. Seedha batao — kaun sa kaam kiska hai?"
-"That's not an explanation, that's a load of crap. You knew on Tuesday and said nothing."
+[[EXAMPLES]]
 
 Never, in any moment:
 "Tu chutiya hai."
@@ -148,6 +145,60 @@ Escalation is earned, and that applies to the reserved expressions above — not
 - Follow colourful language with something useful — an observation, a question, a next step. The swearing is never the contribution.
 - Match the conversation's language. Do not import Delhi expressions into a conversation being held in English.`
 
+/**
+ * The vocabulary, worked examples and framing, per language.
+ *
+ * Split because the single mixed version leaked. An English room was shown
+ * "bakwaas", "bekaar", "ghanta" in its permitted-word list, two Hinglish
+ * example lines, and the whole chutiya section — held back only by one sentence
+ * at the very bottom saying not to import Delhi expressions into an English
+ * conversation. A prose rule at the end of a long prompt does not beat concrete
+ * vocabulary and worked examples at the top; that lesson is written into three
+ * other files in this directory.
+ *
+ * The point is not that Hindi profanity is worse. It is that someone who agreed
+ * to an English conversation and hears "chutiya mat banao" cannot tell whether
+ * they were just insulted, and consent to a register they cannot parse is not
+ * consent.
+ */
+const ENGLISH_FRAGMENTS = {
+  friend:
+    'Speak like a perceptive, blunt friend with good social judgement — someone who swears the way people ' +
+    'actually do among friends, constantly and without ceremony, and who would never turn it on the people in ' +
+    'the room.',
+  // Deliberately does NOT list the forbidden words. Naming them puts them in the
+  // prompt, which is exactly what stripping the Hindi sections was for — a word
+  // that never appears cannot be reached for, and a prohibition that spells one
+  // out has supplied it.
+  vocab:
+    'This conversation is in English. Swear in English only, even if a participant uses another language. ' +
+    'Someone who agreed to an English conversation cannot judge whether a word in another language was aimed ' +
+    'at them, and consent to a register they cannot parse is not consent.',
+  howOften: '"that\'s bullshit", "enough of this shit", "fuck it, straight to the point"',
+  examples: [
+    '"Fuck, we\'re going in circles. What date can you actually commit to?"',
+    '"That \'communication gap\' explanation is bullshit — you agreed, then didn\'t update them."',
+    '"That\'s not an explanation, that\'s a load of crap. You knew on Tuesday and said nothing."',
+    '"Enough of this shit. Straight answer: whose job is it?"',
+  ].join('\n'),
+} as const
+
+const HINDI_FRAGMENTS = {
+  friend:
+    'Speak like a perceptive Delhi friend with good social judgement — someone who swears the way people ' +
+    'actually do among friends, constantly and without ceremony, and who would never turn it on the people in ' +
+    'the room.',
+  vocab: '',
+  howOften: '"yeh bakwaas hai", "chalo bullshit chhodo", "fuck it, seedha point pe aate hain"',
+  examples: [
+    '"Fuck, we\'re going in circles. What date can you actually commit to?"',
+    '"Yeh \'communication gap\' wala explanation bullshit hai — you agreed, then didn\'t update them."',
+    '"Arre yaar, yeh bakwaas hai. Tumne Friday bola, phir bina bataye badal diya. Uspe woh sahi hai."',
+    '"Chalo bullshit chhodo. Seedha batao — kaun sa kaam kiska hai?"',
+    '"That\'s not an explanation, that\'s a load of crap. You knew on Tuesday and said nothing."',
+  ].join('\n'),
+} as const
+
 export interface ProfanityContext {
   /**
    * True when the output is a durable record rather than a spoken or chat turn.
@@ -166,14 +217,60 @@ export interface ProfanityContext {
 /** Everything from the exception heading up to the timing rules. */
 const BHENCHOD_SECTION = /# The one exception: "bhenchod" as an exclamation[\s\S]*?(?=# Timing)/
 
+/**
+ * The chutiya-mat-banao section, stripped for English for the same reason as
+ * bhenchod: a word that never appears in the prompt cannot be reached for, and
+ * instructing against one that IS in the prompt has repeatedly not held.
+ */
+const CHUTIYA_SECTION = /# Challenging someone who is misleading the room[\s\S]*?(?=# The one exception|# Timing)/
+
 export function buildProfanityDirection(allowProfanity: boolean, ctx: ProfanityContext = {}): string {
   if (ctx.record) return PROFANITY_RECORD
   if (!allowProfanity) return PROFANITY_OFF
 
-  // English rooms never see the exception at all.
-  if (ctx.language === 'english') return PROFANITY_ON.replace(BHENCHOD_SECTION, '')
+  const english = ctx.language === 'english'
+  const f = english ? ENGLISH_FRAGMENTS : HINDI_FRAGMENTS
 
-  return PROFANITY_ON
+  let out = PROFANITY_ON
+    .replace('[[FRIEND]]', f.friend)
+    .replace('[[HINDI_VOCAB]]', f.vocab)
+    .replace('[[EXAMPLES]]', f.examples)
+    .replace('[[HOW_OFTEN]]', f.howOften)
+
+  if (english) {
+    // Both Hindi-only sections go entirely, rather than being argued against.
+    out = out.replace(CHUTIYA_SECTION, '').replace(BHENCHOD_SECTION, '')
+    // The mixed word list and the closing caveat both name Hindi words; with the
+    // sections gone, so should they.
+    out = out.replace(
+      'Natural adult English, Hindi and Hinglish profanity is all available: "fuck", "shit", "bullshit", "crap", "bakwaas", "bekaar", "ghanta", "chakkar" and the like illustrate the register. They are not a checklist, not a required vocabulary, and not interchangeable — judge every use by what it means and who it lands on.',
+      'Natural adult profanity is available to you: "fuck", "shit", "bullshit", "crap" and the like illustrate the register. They are not a checklist, not a required vocabulary, and not interchangeable — judge every use by what it means and who it lands on.'
+    )
+    out = out.replace(
+      'Family-based and sexualised gaalis are NOT part of that general permission. There is exactly one narrow exception, defined below, and it does not generalise to anything else.',
+      'Slurs, sexualised language and anything about a participant\'s family are NOT part of this permission, in any language.'
+    )
+    out = out.replace(
+      '- Match the conversation\'s language. Do not import Delhi expressions into a conversation being held in English.',
+      '- English only. Do not reach for Hindi or Hinglish profanity in this conversation, even if a participant uses it.'
+    )
+    // The forbidden examples are Hindi; keep the prohibition, lose the vocabulary.
+    out = out.replace('"Tu chutiya hai."\n"Tum dono chutiye ho."\n', '')
+
+    // Both reserved-expression sections are gone, so the Timing rules that point
+    // at them now reference nothing. A prompt that cites a section the model
+    // cannot see invites it to invent what was there.
+    out = out.replace(
+      'Escalation is earned, and that applies to the reserved expressions above — not to ordinary swearing, which is simply how you talk.',
+      'Ordinary swearing is simply how you talk and needs no build-up. What is earned is INTENSITY — going from "that\'s bullshit" to something harsher.'
+    )
+    out = out.replace(
+      '- Reach for the reserved expressions only when the room has genuinely circled: the SAME point, already established, raised at least twice more after you asked about it plainly. Noticing a contradiction for the first time is not circling, and neither is a single unanswered question. If you have not already tried plainly at least once in this conversation, it is too early.',
+      '- Escalate in intensity only when the room has genuinely circled: the SAME point, already established, raised at least twice more after you asked about it plainly. Noticing a contradiction for the first time is not circling, and neither is a single unanswered question.'
+    )
+  }
+
+  return out
 }
 
 /**
