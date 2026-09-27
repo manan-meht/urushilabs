@@ -122,6 +122,26 @@ export async function reverseCreditsForPayment(input: ReverseCreditsInput): Prom
   }
 }
 
+/**
+ * Gives back a credit that was consumed for a session that then failed to be
+ * created.
+ *
+ * Never throws. It runs on an error path, and a failure here would replace the
+ * real error with this one — leaving the caller reporting the wrong problem and
+ * the customer still short a credit.
+ */
+export async function restoreRoomCredit(userId: string): Promise<void> {
+  try {
+    const db = getServiceClient()
+    const { error } = await db.rpc('restore_room_credit', { p_user_id: userId })
+    if (error) {
+      console.error(`[restoreRoomCredit] could not refund credit for ${userId}:`, error.message)
+    }
+  } catch (err) {
+    console.error('[restoreRoomCredit] threw while refunding:', err instanceof Error ? err.message : err)
+  }
+}
+
 export const PRODUCTS = {
   '1_room': { label: '1 Room Pack', rooms: 1, followUps: 0, amountPaise: 19900 },
   '3_rooms': { label: '3 Room Pack', rooms: 3, followUps: 0, amountPaise: 49900 },

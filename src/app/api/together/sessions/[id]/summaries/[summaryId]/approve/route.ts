@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
+import { verifyTogetherAccess } from '@/lib/together/verifyAccess'
 import { TogetherSummaryApprovalSchema } from '@/lib/validation/schemas'
 
 export async function POST(
@@ -23,28 +23,38 @@ export async function POST(
 
   const { approvedSummary } = parsed.data
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+  const access = await verifyTogetherAccess(id)
+  if (!access) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
   const db = getServiceClient()
 
   const { data: session } = await db
     .from('together_sessions')
-    .select('id, stage, current_speaker, round_number, case_id, person_a_name, person_b_name, cases!inner(user_id)')
+    .select('id, stage, current_speaker, round_number, case_id, person_a_name, person_b_name')
     .eq('id', id)
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session not found.' }, { status: 404 })
 
-  type S = typeof session & { cases: { user_id: string } }
-  if ((session as S).cases.user_id !== user.id) {
-    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
-  }
-
   const validStages = ['person_a_summary_review', 'person_b_summary_review']
   if (!validStages.includes(session.stage)) {
     return NextResponse.json({ error: 'Not in a summary review stage.' }, { status: 409 })
+  }
+
+  // Only the person whose account was summarised may approve that summary, and
+  // the stage says whose it is.
+  //
+  // This route previously authenticated the case owner alone, so Person A could
+  // approve Person B's summary of what Person B had said — editing it first, via
+  // `approvedSummary`. That summary is what the shared report is built from, so
+  // it let one participant author the other's account of the dispute and sign
+  // off on it. Person B could not approve their own.
+  const summarySubject = session.stage === 'person_a_summary_review' ? 'person_a' : 'person_b'
+  if (access.speaker !== summarySubject) {
+    return NextResponse.json(
+      { error: 'Only the person being summarised can approve their own summary.' },
+      { status: 403 }
+    )
   }
 
   // Update the summary

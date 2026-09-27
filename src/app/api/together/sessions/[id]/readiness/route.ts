@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
+import { verifyTogetherAccess } from '@/lib/together/verifyAccess'
 import { TogetherReadinessSchema } from '@/lib/validation/schemas'
 
 export async function POST(
@@ -21,26 +21,34 @@ export async function POST(
     return NextResponse.json({ errors: parsed.error.flatten().fieldErrors }, { status: 422 })
   }
 
-  const { speaker } = parsed.data
+  // The actor comes from WHO IS AUTHENTICATED, never from the request body.
+  //
+  // This route previously authenticated the case owner and then trusted
+  // `speaker` from the body, so Person A could POST {speaker:'person_b'} and
+  // confirm on Person B's behalf that Person B was ready to proceed. Person B,
+  // authenticated by their own participant cookie, could not call it at all —
+  // exactly inverted. verifyTogetherAccess already resolves the real speaker and
+  // is what the messages route has always used.
+  const access = await verifyTogetherAccess(id)
+  if (!access) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+  const { speaker } = parsed.data
+  if (speaker !== access.speaker) {
+    return NextResponse.json(
+      { error: 'You can only confirm readiness for yourself.' },
+      { status: 403 }
+    )
+  }
 
   const db = getServiceClient()
 
   const { data: session } = await db
     .from('together_sessions')
-    .select('id, stage, person_a_ready_confirmed_at, person_b_ready_confirmed_at, case_id, cases!inner(user_id)')
+    .select('id, stage, person_a_ready_confirmed_at, person_b_ready_confirmed_at, case_id')
     .eq('id', id)
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session not found.' }, { status: 404 })
-
-  type S = typeof session & { cases: { user_id: string } }
-  if ((session as S).cases.user_id !== user.id) {
-    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
-  }
 
   // Readiness can be confirmed during any sharing/summary stage or sharing_confirmation
   const validStages = [

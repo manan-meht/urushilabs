@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
 import { generatePublicReference, generateSecureToken, hashToken } from '@/lib/tokens'
-import { consumeRoomCredit } from '@/lib/db/credits'
+import { consumeRoomCredit, restoreRoomCredit } from '@/lib/db/credits'
 import { ConversationSettingsSchema, CreateTogetherSessionSchema } from '@/lib/validation/schemas'
 import { conversationSettingsToRow, normalizeConversationSettings } from '@/lib/conversation/settings'
 
@@ -32,12 +32,17 @@ export async function POST(req: NextRequest) {
   // The normalizer, not the client, decides what is stored.
   const conversationSettings = normalizeConversationSettings(settingsParsed.data)
 
+  // Set only once the credit is actually taken, so the error path below refunds
+  // a real charge and never invents one.
+  let chargedUserId: string | null = null
+
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
     const credited = await consumeRoomCredit(user.id)
+    if (credited) chargedUserId = user.id
     if (!credited) {
       return NextResponse.json(
         { error: 'no_credits', message: 'You have used your free room. Purchase a plan to start more conversations.' },
@@ -116,6 +121,9 @@ export async function POST(req: NextRequest) {
       personBToken: personBToken ?? undefined,
     })
   } catch (err) {
+    // The credit was already consumed above, and this session will not exist.
+    // Hand it back rather than charging for a conversation nobody can have.
+    if (chargedUserId) await restoreRoomCredit(chargedUserId)
     console.error('[POST /api/together/sessions] Unexpected error:', err)
     return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 })
   }

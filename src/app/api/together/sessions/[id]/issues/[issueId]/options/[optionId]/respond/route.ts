@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
+import { verifyTogetherAccess } from '@/lib/together/verifyAccess'
 import { TogetherOptionResponseSchema } from '@/lib/validation/schemas'
 
 export async function POST(
@@ -21,26 +21,31 @@ export async function POST(
     return NextResponse.json({ errors: parsed.error.flatten().fieldErrors }, { status: 422 })
   }
 
-  const { speaker, response, note } = parsed.data
+  // Accepting or rejecting a proposal is the single most consequential act in
+  // this flow — it is what the final report treats as agreement. It previously
+  // authenticated the case owner and took `speaker` from the body, so Person A
+  // could record person_b_response: 'accept' and the report would show Person B
+  // agreeing to something they never saw.
+  const access = await verifyTogetherAccess(id)
+  if (!access) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+  const { speaker, response, note } = parsed.data
+  if (speaker !== access.speaker) {
+    return NextResponse.json(
+      { error: 'You can only respond to a proposal as yourself.' },
+      { status: 403 }
+    )
+  }
 
   const db = getServiceClient()
 
   const { data: session } = await db
     .from('together_sessions')
-    .select('id, cases!inner(user_id)')
+    .select('id')
     .eq('id', id)
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session not found.' }, { status: 404 })
-
-  type S = typeof session & { cases: { user_id: string } }
-  if ((session as S).cases.user_id !== user.id) {
-    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
-  }
 
   const updateField = speaker === 'person_a'
     ? { person_a_response: response, person_a_note: note ?? null }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/db/client'
 import { generatePublicReference, generateSecureToken, hashToken } from '@/lib/tokens'
-import { consumeRoomCredit } from '@/lib/db/credits'
+import { consumeRoomCredit, restoreRoomCredit } from '@/lib/db/credits'
 import { isMeetingMediationEnabled } from '@/lib/featureFlags'
 import { ConversationSettingsSchema, CreateMeetingSessionSchema } from '@/lib/validation/schemas'
 import { conversationSettingsToRow, normalizeConversationSettings } from '@/lib/conversation/settings'
@@ -65,9 +65,14 @@ export async function POST(req: NextRequest) {
     (user.user_metadata?.['full_name'] as string | undefined) ?? user.email ?? 'The organizer'
   )
 
+  // Set only once the credit is actually taken, so the error path below refunds
+  // a real charge and never invents one.
+  let chargedUserId: string | null = null
+
   try {
     // Shared credit pool with Together Mode / Live Mediation — see src/lib/db/credits.ts.
     const credited = await consumeRoomCredit(user.id)
+    if (credited) chargedUserId = user.id
     if (!credited) {
       return NextResponse.json(
         { error: 'no_credits', message: 'You have used your free room. Purchase a plan to start more conversations.' },
@@ -190,6 +195,9 @@ export async function POST(req: NextRequest) {
       participants: insertedParticipants,
     })
   } catch (err) {
+    // The credit was already consumed above, and this session will not exist.
+    // Hand it back rather than charging for a conversation nobody can have.
+    if (chargedUserId) await restoreRoomCredit(chargedUserId)
     console.error('[POST /api/meeting/sessions] Unexpected error:', err)
     return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 })
   }
