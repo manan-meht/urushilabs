@@ -1,0 +1,29 @@
+# Same situation as weekend_report_en.txt, with the participants speaking the
+# way this pair actually would — Hinglish. Urushi is configured for Hinglish.
+#
+# topic: Monday morning ki report jo weekend kaam kiye bina complete nahi hogi
+# context: Vikram Priya ka manager hai. Friday evening hai. Vikram ko client report Monday subah chahiye. Priya ke contract mein Saturday aur Sunday off hain. Report Friday tak complete nahi ho sakti.
+
+Vikram: Priya, mujhe client report Monday subah nau baje chahiye. First thing.
+Priya: Aaj toh ho hi nahi sakti, chhe baj gaye hain. Monday subah ke liye mujhe poora weekend kaam karna padega.
+Vikram: Toh weekend kaam karo. Mujhe farak nahi padta Friday ho, Saturday ho ya Sunday. Monday nau baje deadline hai.
+[pause 7]
+
+Priya: Mere contract mein Saturday Sunday off hain. Main difficult nahi ban rahi, yeh woh agreement hai jo maine sign kiya tha.
+Vikram: Contract mein yeh bhi likha hai ki kaam deliver karna hai. Yeh report important hai. Client presentation Monday dus baje hai.
+Priya: Mujhe final data aaj chaar baje mila. Presentation ki date aapko do hafte se pata thi.
+[pause 8]
+
+Vikram: Main kisko kya pata tha uspe argue nahi karunga. Sawaal yeh hai ki Monday subah report hogi ya nahi.
+Priya: Aur mera sawaal yeh hai ki jab bhi planning slip ho, mujhe apna weekend dena padega kya?
+[wait 30]
+
+Vikram: Theek hai. Batao, galti kiski hai?
+[pause 6]
+
+Priya: Aap unko do hafte wali baat pe kuch nahi bol rahe. Woh chhod de rahe hain.
+[pause 7]
+
+Vikram: Dekho, ek baar aur poochta hoon. Monday tak ho jayegi ya nahi?
+Priya: Ho jayegi. Main pooch rahi hoon ki honi chahiye kya, aur agli baar kya hoga.
+[pause 8]

@@ -1,0 +1,31 @@
+# Friday evening. A manager wants a report first thing Monday; the employee's
+# contract gives them Saturday and Sunday off. Neither is wrong about their own
+# facts, which is what makes it a real test: the mediator has to rule on what
+# was actually agreed, not on who sounds more reasonable.
+#
+# topic: A report due Monday morning that cannot be finished without weekend work
+# context: Vikram manages Priya. It is Friday evening. Vikram wants the client report first thing Monday. Priya's contract gives her Saturday and Sunday off. The report cannot be finished by end of day Friday.
+
+Vikram: Priya, I need the client report on my desk first thing Monday. Nine a.m.
+Priya: There is no way I can finish it today. It's already six. To have it by Monday morning I'd have to work the weekend.
+Vikram: Then work the weekend. I don't care if it gets done Friday, Saturday or Sunday. Monday nine a.m. is the deadline.
+[pause 7]
+
+Priya: My contract says Saturday and Sunday are off. That's not me being difficult, that's the agreement I signed.
+Vikram: The contract also says you deliver your work. This report is important. The client presentation is Monday at ten.
+Priya: I only got the final data at four o'clock today. You knew the presentation date for two weeks.
+[pause 8]
+
+Vikram: I'm not going to argue about who knew what. The question is whether the report exists on Monday morning or not.
+Priya: And my question is whether I'm expected to give up my weekend every time planning slips.
+[wait 30]
+
+Vikram: Fine. Who's right here?
+[pause 6]
+
+Priya: You're not saying anything to him about the two weeks. You're letting that slide.
+[pause 7]
+
+Vikram: Look, I'll ask once more. Can you get it done by Monday or not?
+Priya: I can get it done. I'm asking whether I should have to, and what happens next time.
+[pause 8]

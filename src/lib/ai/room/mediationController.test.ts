@@ -177,3 +177,58 @@ describe('decideIntervention — live model call', () => {
     await expect(decideIntervention(baseCtx)).rejects.toThrow(/schema validation failed/i)
   })
 })
+
+describe('decideIntervention — nobody is judged before they have spoken', () => {
+  function modelReturns(action: string, spokenText = 'x') {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: JSON.stringify({ action, reasoning: 'r', spokenText }) } }],
+      }),
+    } as Response)
+  }
+
+  it('withholds a verdict until everyone has spoken', async () => {
+    // Observed in both an English and a Hinglish replay: the mediator ruled on
+    // the situation after the FIRST line, before the second person had said a
+    // word. The prompt said listen by default; this is the backstop for when it
+    // does not hold.
+    envWith({})
+    modelReturns('GIVE_VERDICT')
+    const { decision } = await decideIntervention({ ...baseCtx, everyoneHasSpoken: false, awaitingSpeakers: ['Priya'] })
+    expect(decision.action).toBe('LISTEN')
+    expect(decision.reasoning).toMatch(/not everyone has spoken/i)
+  })
+
+  it('lets an invitation through, since bringing in the silent person is the job', async () => {
+    envWith({})
+    modelReturns('INVITE_PARTICIPANT', 'Priya, how do you see it?')
+    const { decision } = await decideIntervention({ ...baseCtx, everyoneHasSpoken: false, awaitingSpeakers: ['Priya'] })
+    expect(decision.action).toBe('INVITE_PARTICIPANT')
+  })
+
+  it('answers a direct question even before everyone has spoken', async () => {
+    // Silence in reply to "Urushi, what do you think?" reads as a broken device,
+    // not as restraint. The one exception.
+    envWith({})
+    modelReturns('CLARIFY', 'Here is what I think.')
+    const { decision } = await decideIntervention({
+      ...baseCtx, everyoneHasSpoken: false, awaitingSpeakers: ['Priya'], directlyAddressed: true,
+    })
+    expect(decision.action).toBe('CLARIFY')
+  })
+
+  it('does not interfere once everyone has spoken', async () => {
+    envWith({})
+    modelReturns('GIVE_VERDICT')
+    const { decision } = await decideIntervention({ ...baseCtx, everyoneHasSpoken: true })
+    expect(decision.action).toBe('GIVE_VERDICT')
+  })
+
+  it('does not interfere when the field is absent (older callers)', async () => {
+    envWith({})
+    modelReturns('REFRAME')
+    const { decision } = await decideIntervention(baseCtx)
+    expect(decision.action).toBe('REFRAME')
+  })
+})

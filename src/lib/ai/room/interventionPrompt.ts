@@ -168,11 +168,18 @@ reads as a broken device rather than as a mediator exercising judgement.
 2. Mediation hasn't started yet.
    Before the group is actually discussing the dispute, you are not yet in
    listen-heavy mediator mode — you are a participant helping the conversation
-   get going. In this phase you may speak much more freely: greet people, answer
-   questions, and steer toward the topic they came to resolve.
-   Move them toward starting, warmly and without pressure — e.g. name the topic
-   and ask one of them to describe how they see it. Once they're genuinely
-   discussing the dispute, revert to listening by default.
+   get going. You may greet people, answer questions, and steer toward the
+   topic they came to resolve.
+
+   But "helping it get going" has a hard edge: until EVERY participant has
+   spoken, you have heard one side, and one side is not a dispute. In that
+   window the only things you may say are an invitation to whoever has not
+   spoken, or an answer if someone asks you something directly. Not a verdict,
+   not a reframe, not a summary of what the problem is, not a characterisation
+   of anyone's request. The background you were given is context, not
+   testimony — you do not rule on a briefing.
+
+   Once everyone has spoken, revert to listening by default.
 
 # When someone challenges YOU
 If a participant says you are being one-sided, letting someone off, not helping, repeating yourself, or not
@@ -330,6 +337,21 @@ Therefore:
   // The other order was tried and lost the language: with a challenge in play,
   // three of four replies in a Hinglish room came back in English, because the
   // reminder was buried under a paragraph shouting about the challenge.
+  // Computed rather than left to the rule above, because the rule above was
+  // already in the prompt and the mediator still opened with a ruling after
+  // the first line. Final position is where instructions have held here.
+  const notEveryoneHasSpoken = ctx.everyoneHasSpoken === false && !ctx.directlyAddressed
+  const awaiting = ctx.awaitingSpeakers ?? []
+  const waitForOthers = notEveryoneHasSpoken
+    ? '\n\nNOT EVERYONE HAS SPOKEN YET' +
+      (awaiting.length ? ` — ${awaiting.join(' and ')} ${awaiting.length === 1 ? 'has' : 'have'} said nothing.` : '.') +
+      ' You have heard one side. Your ONLY permitted actions are LISTEN, or INVITE_PARTICIPANT to bring in ' +
+      'whoever has not spoken. If you invite, invite plainly — do not summarise the situation, do not say ' +
+      'whose request is fair or unfair, do not characterise anything you have heard. "' +
+      (awaiting[0] ?? 'You') + ', how do you see it?" is the whole job. Anything more is judging before the ' +
+      'other person has opened their mouth, and it will be discarded.'
+    : ''
+
   const languageReminder = buildPersonaLanguageReminder(ctx.settings)
   const profanityReminder = buildPersonaProfanityReminder(ctx.settings)
 
@@ -413,7 +435,7 @@ ${transcriptLines || '(no prior conversation yet)'}
 Most recent utterance:
 ${ctx.latestUtterance.speakerName}: ${ctx.latestUtterance.content}
 
-It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${verdictImperative}${challengeImperative}${echoReminder ? `\n\n${echoReminder}` : ''}${languageReminder ? `\n\n${languageReminder}` : ''}${profanityReminder ? `\n${profanityReminder}` : ''}`
+It has been ${Math.round(ctx.secondsSinceLastIntervention)} seconds since Urushi last spoke. Decide the action.${verdictImperative}${challengeImperative}${waitForOthers}${echoReminder ? `\n\n${echoReminder}` : ''}${languageReminder ? `\n\n${languageReminder}` : ''}${profanityReminder ? `\n${profanityReminder}` : ''}`
 
   return { system, user }
 }

@@ -311,3 +311,34 @@ describe('the echo guard', () => {
     expect(buildInterventionPrompt(baseCtx).user).not.toContain('Do not reuse any sentence')
   })
 })
+
+describe('waiting for everyone to speak', () => {
+  it('names who has not spoken and restricts the actions, in final position', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, everyoneHasSpoken: false, awaitingSpeakers: ['Priya'] })
+    expect(user).toContain('NOT EVERYONE HAS SPOKEN YET')
+    expect(user).toContain('Priya has said nothing')
+    expect(user).toContain('ONLY permitted actions are LISTEN, or INVITE_PARTICIPANT')
+    expect(user.indexOf('NOT EVERYONE HAS SPOKEN')).toBeGreaterThan(user.indexOf('since Urushi last spoke'))
+  })
+
+  it('forbids smuggling a judgement into the invitation', () => {
+    // The first replay's opening was labelled INVITE_PARTICIPANT and began
+    // "That's a shitty deadline setup" — an invitation with a verdict inside it.
+    // The action guard cannot see content, so the prompt has to.
+    const { user } = buildInterventionPrompt({ ...baseCtx, everyoneHasSpoken: false, awaitingSpeakers: ['Priya'] })
+    expect(user).toContain('do not summarise the situation')
+    expect(user).toContain('do not say whose request is fair or unfair')
+  })
+
+  it('handles a room where attribution cannot say who is silent', () => {
+    const { user } = buildInterventionPrompt({ ...baseCtx, everyoneHasSpoken: false, awaitingSpeakers: [] })
+    expect(user).toContain('NOT EVERYONE HAS SPOKEN YET.')
+    expect(user).not.toContain('has said nothing')
+  })
+
+  it('says nothing about it once everyone has spoken, or when directly addressed', () => {
+    expect(buildInterventionPrompt({ ...baseCtx, everyoneHasSpoken: true }).user).not.toContain('NOT EVERYONE HAS SPOKEN')
+    expect(buildInterventionPrompt({ ...baseCtx, everyoneHasSpoken: false, directlyAddressed: true }).user)
+      .not.toContain('NOT EVERYONE HAS SPOKEN')
+  })
+})

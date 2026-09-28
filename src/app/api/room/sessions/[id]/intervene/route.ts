@@ -171,6 +171,21 @@ export async function POST(
   const speakersIdentified = [...recentTranscript.map((t) => t.speakerName), speakerName]
     .some((name) => knownParticipantNames.has(name))
 
+  // Has everyone spoken? With attribution, the set of names heard so far tells
+  // us exactly who has not. Without it we only know an upper bound — N
+  // utterances means at most N distinct speakers — so fewer utterances than
+  // participants means someone certainly has not spoken, but not who.
+  const participantSegments = orderedSegments.filter((s) => s.role === 'participant')
+  const heard = new Set(participantSegments.map((s) => resolveSpeakerName(s.participant_id, s.diarization_speaker_label)))
+  if (!isPause) heard.add(speakerName)
+  const awaitingSpeakers = speakersIdentified
+    ? participantList.map((p) => p.name).filter((n) => !heard.has(n))
+    : []
+  const utterancesSoFar = participantSegments.length + (isPause ? 0 : 1)
+  const everyoneHasSpoken = speakersIdentified
+    ? awaitingSpeakers.length === 0
+    : utterancesSoFar >= participantList.length
+
   // Mediation counts as started once an issue is being tracked, or once the
   // PARTICIPANTS have said enough that the group is plainly into the substance.
   // Before that, Urushi is conversationally present rather than listen-only.
@@ -219,6 +234,8 @@ export async function POST(
     profanityJustDisabled,
     mediationStarted,
     speakersIdentified,
+    everyoneHasSpoken,
+    awaitingSpeakers,
   })
 
   // What this call cost, recorded beside the work rather than in its way.

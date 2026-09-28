@@ -191,6 +191,29 @@ export interface MediationContext {
    * not to answer with "explain in more detail", and it did exactly that.
    */
   askedForVerdict?: boolean
+  /**
+   * Whether every participant has said at least one thing.
+   *
+   * Until they have, Urushi may do exactly two things: invite whoever has not
+   * spoken, or answer if directly addressed. Nothing else — no verdict, no
+   * reframe, no characterisation of the situation.
+   *
+   * Observed in both an English and a Hinglish replay: the mediator
+   * intervened after the FIRST line of the conversation — "That's a shitty
+   * deadline setup" — ruling on facts it had read in the context summary,
+   * before the second participant had said a word. It was not wrong about the
+   * facts, and that is exactly the problem: a mediator that has already
+   * decided before hearing you is not one you will trust when it decides
+   * against you. Enforced in code, because the prompt already said "listen by
+   * default" and it did not hold.
+   */
+  everyoneHasSpoken?: boolean
+  /**
+   * Names of participants who have not yet spoken, when attribution makes that
+   * knowable. Empty with everyoneHasSpoken false means "someone, but we cannot
+   * tell who" — a room without speaker identification.
+   */
+  awaitingSpeakers?: string[]
 }
 
 /**
@@ -322,6 +345,29 @@ export async function decideIntervention(ctx: MediationContext): Promise<Decisio
 
   // A person who asked a direct question gets an answer regardless of how
   // recently Urushi last spoke.
+  // Nobody gets judged before they have spoken.
+  //
+  // The prompt carries the same rule as a final-position imperative, so the
+  // model should already be choosing INVITE_PARTICIPANT or LISTEN here. This
+  // is the backstop for when it does not, because "listen by default" was in
+  // the prompt the whole time and the mediator still opened with a ruling. A
+  // direct question is the one exception: silence in answer to "Urushi?" reads
+  // as a broken device, not as restraint.
+  if (
+    ctx.everyoneHasSpoken === false &&
+    !directlyAddressed &&
+    parsed.data.action !== 'LISTEN' &&
+    parsed.data.action !== 'INVITE_PARTICIPANT'
+  ) {
+    return {
+      decision: {
+        action: 'LISTEN',
+        reasoning: `Withheld a ${parsed.data.action}: not everyone has spoken yet, so there is nothing to rule on.`,
+      },
+      usage,
+    }
+  }
+
   if (directlyAddressed) return { decision: parsed.data, usage }
 
   const finalAction = enforceCooldown({
