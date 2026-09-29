@@ -4,11 +4,11 @@ import { createHmac } from 'crypto'
 const mockGetEnv = vi.fn()
 vi.mock('@/lib/env', () => ({ getEnv: () => mockGetEnv() }))
 
-import { RecallMeetingBotProvider } from './recallProvider'
+import { RecallMeetingBotProvider, transcriptProviderConfig } from './recallProvider'
 
 const SECRET_B64 = Buffer.from('test-signing-key-32-bytes-long!!').toString('base64')
 
-function envWith(overrides: Partial<{ RECALL_API_KEY: string; RECALL_WEBHOOK_SECRET: string; RECALL_API_BASE_URL: string; RECALL_BOT_NAME: string }> = {}) {
+function envWith(overrides: Partial<{ RECALL_API_KEY: string; RECALL_WEBHOOK_SECRET: string; RECALL_API_BASE_URL: string; RECALL_BOT_NAME: string; RECALL_MULTILINGUAL_PROVIDER: string | undefined }> = {}) {
   mockGetEnv.mockReturnValue({
     RECALL_API_KEY: 'test-key',
     RECALL_WEBHOOK_SECRET: `whsec_${SECRET_B64}`,
@@ -63,7 +63,6 @@ describe('RecallMeetingBotProvider.verifyWebhook', () => {
     const provider = new RecallMeetingBotProvider()
     const id = 'msg_1'
     const timestamp = '1700000000'
-    const now = 1_700_000_000_000 + 30_000
     const signature = signPayload(id, timestamp, JSON.stringify({ event: 'bot.status_change' }))
 
     expect(provider.verifyWebhook({
@@ -278,5 +277,60 @@ describe('who is speaking — events that used to be thrown away', () => {
     expect(events[0]!.type).toBe('participant_speaking')
     expect(events[0]!.speaking).toBe(true)
     expect(events[0]!.transcriptSegment).toBeUndefined()
+  })
+})
+
+describe('transcriptProviderConfig', () => {
+  // The bot ran on platform captions and the median segment arrived 53 s late,
+  // one speaker's median 188 s, with no partials. Streaming is the fix; these
+  // pin which engine each language gets.
+  it('gives English sessions Recall streaming in low-latency mode', () => {
+    expect(transcriptProviderConfig('english', undefined)).toEqual({
+      recallai_streaming: { mode: 'prioritize_low_latency', language_code: 'en' },
+    })
+  })
+
+  it('gives Hindi and Hinglish Deepgram multilingual streaming once it is configured', () => {
+    for (const lang of ['hindi', 'hinglish', 'auto'] as const) {
+      expect(transcriptProviderConfig(lang, 'deepgram')).toEqual({ deepgram_streaming: { model: 'nova-3', language: 'multi' } })
+    }
+  })
+
+  it('falls back to platform captions for non-English until a multilingual provider is configured', () => {
+    expect(transcriptProviderConfig('hindi', undefined)).toEqual({ meeting_captions: {} })
+    expect(transcriptProviderConfig(undefined, undefined)).toEqual({ meeting_captions: {} })
+  })
+
+  it('never puts English on the accuracy mode, which Recall documents as 3-10 minutes behind', () => {
+    expect(JSON.stringify(transcriptProviderConfig('english', 'deepgram'))).not.toContain('prioritize_accuracy')
+  })
+})
+
+describe('RecallMeetingBotProvider.createBot', () => {
+  it('requests streaming transcription with partials, stores no video, and keeps artefacts one day', async () => {
+    envWith()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'bot_1' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      const handle = await new RecallMeetingBotProvider().createBot({
+        meetingUrl: 'https://meet.google.com/abc-defg-hij',
+        platform: 'google_meet',
+        botDisplayName: 'Urushi',
+        idempotencyKey: 'session-1',
+        webhookUrl: 'https://example.test/webhook',
+        language: 'english',
+      })
+      expect(handle.providerBotId).toBe('bot_1')
+      const body = JSON.parse((fetchMock.mock.calls[0] as [string, { body: string }])[1].body)
+      expect(body.recording_config.transcript.provider).toEqual({
+        recallai_streaming: { mode: 'prioritize_low_latency', language_code: 'en' },
+      })
+      expect(body.recording_config.video_mixed_mp4).toBeNull()
+      expect(body.recording_config.retention).toEqual({ type: 'timed', hours: 24 })
+      expect(body.recording_config.realtime_endpoints[0].events).toContain('transcript.partial_data')
+      expect(body.recording_config.realtime_endpoints[0].events).toContain('participant_events.speech_on')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

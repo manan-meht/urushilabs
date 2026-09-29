@@ -5,6 +5,7 @@ import { getMeetingBotProvider } from '@/lib/meeting/providerFactory'
 import { getEnv } from '@/lib/env'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS } from '@/lib/analytics/meetingEvents'
 import { MeetingProviderNotConfiguredError } from '@/lib/meeting/provider'
+import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 
 /**
  * Requests the meeting bot to join now (or schedules it for scheduled_start_at).
@@ -45,6 +46,9 @@ export async function POST(
   const { RECALL_BOT_NAME, RECALL_WEBHOOK_URL, NEXT_PUBLIC_APP_URL } = getEnv()
   const webhookUrl = RECALL_WEBHOOK_URL || `${NEXT_PUBLIC_APP_URL}/api/integrations/recall/webhook`
 
+  // The language picks the transcription engine (see transcriptProviderConfig).
+  const { language } = await getEffectiveSettings(access.caseId)
+
   await db.from('meeting_sessions').update({ status: 'bot_requested', requested_at: new Date().toISOString() }).eq('id', id)
   await trackMeetingEvent(db, { caseId: access.caseId, event: MEETING_ANALYTICS_EVENTS.BOT_REQUESTED })
 
@@ -56,6 +60,7 @@ export async function POST(
           botDisplayName: RECALL_BOT_NAME,
           idempotencyKey: access.session.id,
           webhookUrl,
+          language,
         })
       : await provider.scheduleBot({
           meetingUrl: access.session.meeting_url,
@@ -64,6 +69,7 @@ export async function POST(
           idempotencyKey: access.session.id,
           webhookUrl,
           joinAt: access.session.scheduled_start_at,
+          language,
         })
 
     await db.from('meeting_sessions').update({

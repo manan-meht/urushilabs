@@ -23,9 +23,17 @@ import type {
 import {
   decideIntervention,
   generateInterventionSpeech,
+  SKIP_INTERVENTION,
   type EngineContext,
   type InterventionDecision,
 } from '@/lib/ai/meeting/interventionEngine'
+import {
+  mergeRuntimeState,
+  controllerFields,
+  claimDeliberation,
+  releaseDeliberation,
+  nextSequenceNumber,
+} from './runtimeStateStore'
 import { getVoiceProfile } from '@/lib/ai/meeting/voiceProfile'
 import {
   applyOverride,
@@ -45,7 +53,6 @@ import {
   updateRuntimeState,
   type RuntimeState,
   isFloorOccupied,
-  setBotStatus,
   parseRuntimeState as parseRuntimeStateForFloor,
 } from '@/lib/meeting/runtimeState'
 import { isTrivialUtterance } from '@/lib/ai/meeting/interventionGuardrails'
@@ -104,12 +111,7 @@ export async function ingestMeetingTranscriptSegment(input: IngestTranscriptInpu
   // circularity detection, and letting it react to itself. Drop those here.
   if (await isEchoOfUrushi(db, input.sessionId, input.content)) return
 
-  const { count } = await db
-    .from('meeting_transcript_segments')
-    .select('id', { count: 'exact', head: true })
-    .eq('session_id', input.sessionId)
-
-  const sequenceNumber = (count ?? 0) + 1
+  const sequenceNumber = await nextSequenceNumber(db, input.sessionId)
 
   await db.from('meeting_transcript_segments').insert({
     session_id: input.sessionId,
@@ -135,11 +137,68 @@ export async function ingestMeetingTranscriptSegment(input: IngestTranscriptInpu
     await tryAffirmPendingAgreement(db, input.sessionId, meetingSession.case_id, matchedParticipant.id)
   }
 
-  await runMediationController(db, meetingSession, participantList, {
-    speakerName,
-    content: input.content,
-  })
+  // Every utterance updates the running stats (word share, questions, heat)
+  // whether or not a deliberation follows. Read-modify-write on the pipeline's
+  // own keys only; a collision between two segments in the same instant costs
+  // a word count, not the floor or the tile.
+  const state = updateRuntimeState(
+    parseRuntimeState((meetingSession as unknown as { runtime_state?: unknown }).runtime_state),
+    { speaker: speakerName, text: input.content },
+  )
+  await mergeRuntimeState(db, input.sessionId, controllerFields(state))
+
+  // One deliberation at a time. With streaming transcription segments land
+  // every second or two, and each used to start its own decision pipeline —
+  // three of seven interventions in one session made the same point. A
+  // segment that finds a pipeline running is stored and left for it: the
+  // running one re-reads the transcript before it speaks.
+  if (!(await claimDeliberation(db, input.sessionId))) return
+
+  try {
+    await runMediationController(db, meetingSession, participantList, {
+      speakerName,
+      content: input.content,
+      sequenceNumber,
+    }, state)
+  } finally {
+    await releaseDeliberation(db, input.sessionId)
+  }
 }
+
+/** The utterance that started a deliberation, with its position so later arrivals can be counted. */
+interface TriggerUtterance extends MeetingTranscriptEntry {
+  sequenceNumber: number
+}
+
+/**
+ * The newest transcript rows, oldest first. `sinceSequence` returns only human
+ * lines after that position: what the room said while a decision was running.
+ */
+async function loadTranscript(
+  db: ServiceClient,
+  sessionId: string,
+  opts: { limit?: number; sinceSequence?: number } = {},
+): Promise<Array<{ speaker: string; text: string; role: string; sequence: number }>> {
+  let q = db
+    .from('meeting_transcript_segments')
+    .select('speaker_name, content, role, sequence_number')
+    .eq('session_id', sessionId)
+    .order('sequence_number', { ascending: false })
+    .limit(opts.limit ?? 21)
+  if (opts.sinceSequence !== undefined) q = q.gt('sequence_number', opts.sinceSequence).eq('role', 'participant')
+  const { data } = await q
+  return ((data ?? []) as Array<{ speaker_name: string | null; content: string; role: string; sequence_number: number }>)
+    .reverse()
+    .map((r) => ({
+      speaker: r.speaker_name ?? (r.role === 'assistant' ? 'Urushi' : 'Unknown'),
+      text: r.content,
+      role: r.role,
+      sequence: r.sequence_number,
+    }))
+}
+
+/** Human turns that may land after the trigger before Urushi's point is treated as possibly stale. */
+const STALE_AFTER_SEGMENTS = 2
 
 /** Normalizes for echo comparison: case, punctuation and spacing all vary in ASR output. */
 function normalizeForEcho(text: string): string {
@@ -223,7 +282,8 @@ async function runMediationController(
   db: ServiceClient,
   session: DbMeetingSession,
   participants: DbMeetingParticipant[],
-  latest: MeetingTranscriptEntry
+  latest: TriggerUtterance,
+  state: RuntimeState
 ): Promise<void> {
   const startedAt = Date.now()
   // Personality/language/profanity are agreed for the whole conversation and
@@ -235,20 +295,9 @@ async function runMediationController(
     conversationSettings,
   )
 
-  const { data: recentRows } = await db
-    .from('meeting_transcript_segments')
-    .select('speaker_name, content, role')
-    .eq('session_id', session.id)
-    .order('sequence_number', { ascending: false })
-    .limit(21)
-
-  const recentTranscript = ((recentRows ?? []) as Array<{ speaker_name: string | null; content: string; role: string }>)
-    .reverse()
-    .slice(0, -1) // exclude the just-inserted latest row
-    .map((r) => ({
-      speaker: r.speaker_name ?? (r.role === 'assistant' ? 'Urushi' : 'Unknown'),
-      text: r.content,
-    }))
+  const recentTranscript = (await loadTranscript(db, session.id))
+    .filter((r) => r.sequence < latest.sequenceNumber)
+    .map(({ speaker, text }) => ({ speaker, text }))
 
   // ── Human overrides (spec §14) ─────────────────────────────────────────────
   // Checked before anything expensive: an explicit "Urushi, hold on" must take
@@ -271,13 +320,6 @@ async function runMediationController(
       metadata: { mode: override.mode },
     })
   }
-
-  // ── Runtime state (spec §9) ────────────────────────────────────────────────
-  const previousState = parseRuntimeState((session as unknown as { runtime_state?: unknown }).runtime_state)
-  let state = updateRuntimeState(previousState, {
-    speaker: latest.speakerName,
-    text: latest.content,
-  })
 
   const perspectives: ParticipantPerspective[] = participants
     .filter((p) => p.encrypted_context && p.context_iv && p.context_tag)
@@ -324,7 +366,7 @@ async function runMediationController(
     decision = await decideIntervention(ctx)
   } catch (err) {
     console.error('[meeting pipeline] intervention decision failed:', err)
-    await persistRuntimeState(db, session.id, state)
+    await mergeRuntimeState(db, session.id, controllerFields(state))
     return
   }
 
@@ -347,7 +389,7 @@ async function runMediationController(
         suppressed: true,
       })
     }
-    await persistRuntimeState(db, session.id, state)
+    await mergeRuntimeState(db, session.id, controllerFields(state))
     return
   }
 
@@ -379,11 +421,49 @@ async function runMediationController(
     spokenText = await generateInterventionSpeech(ctx, decision)
   } catch (err) {
     console.error('[meeting pipeline] intervention speech failed:', err)
-    await persistRuntimeState(db, session.id, state)
+    await mergeRuntimeState(db, session.id, controllerFields(state))
     return
   }
 
   const reason = decision.reason!
+
+  // ── Has the room moved on? ─────────────────────────────────────────────────
+  // Two model calls have passed since the trigger. If people kept talking, the
+  // line was written for a moment that is gone: regenerate it against what was
+  // just said, and let the model decline. A direct request ("Urushi, what do
+  // you think?") is never dropped — silence there reads as a fault.
+  const movedOn = await loadTranscript(db, session.id, { sinceSequence: latest.sequenceNumber, limit: 12 })
+  if (movedOn.length >= STALE_AFTER_SEGMENTS && reason !== 'DIRECT_REQUEST') {
+    try {
+      const refreshed = await generateInterventionSpeech(
+        { ...ctx, recentTranscript: [...ctx.recentTranscript, { speaker: ctx.latestUtterance.speaker, text: ctx.latestUtterance.text }] },
+        decision,
+        { movedOn: movedOn.map(({ speaker, text }) => ({ speaker, text })) },
+      )
+      if (refreshed === SKIP_INTERVENTION) {
+        await db.from('meeting_interventions').insert({
+          session_id: session.id,
+          case_id: session.case_id,
+          action: 'LISTEN',
+          reasoning: `Withdrawn: the room moved on (${movedOn.length} turns) before Urushi could speak about ${reason}.`,
+          intervention_reason: reason,
+          urgency: decision.urgency,
+          confidence: decision.confidence,
+          latency_ms: Date.now() - startedAt,
+          suppressed: true,
+        })
+        await writeBotStatus(db, session.id, 'listening')
+        await mergeRuntimeState(db, session.id, controllerFields(state))
+        return
+      }
+      spokenText = refreshed
+    } catch (err) {
+      // Keep the original line rather than say nothing: a slightly late point
+      // beats a dropped one when the regeneration itself failed.
+      console.warn('[meeting pipeline] could not refresh a stale intervention:', err instanceof Error ? err.message : err)
+    }
+  }
+
   await db.from('meeting_interventions').insert({
     session_id: session.id,
     case_id: session.case_id,
@@ -440,7 +520,7 @@ async function runMediationController(
   })
 
   state = recordIntervention(state, { reason, style: decision.style, at: Date.now() })
-  await persistRuntimeState(db, session.id, state)
+  await mergeRuntimeState(db, session.id, controllerFields(state))
 
   await speakInMeeting(session, spokenText, settings)
 }
@@ -544,18 +624,6 @@ async function ensureCurrentIssue(
   }
 }
 
-async function persistRuntimeState(db: ServiceClient, sessionId: string, state: RuntimeState): Promise<void> {
-  const { error } = await db.from('meeting_sessions').update({ runtime_state: state }).eq('id', sessionId)
-  if (error) console.error('[meeting pipeline] failed to persist runtime state:', error.message)
-}
-
-async function nextSequenceNumber(db: ServiceClient, sessionId: string): Promise<number> {
-  const { count } = await db
-    .from('meeting_transcript_segments')
-    .select('id', { count: 'exact', head: true })
-    .eq('session_id', sessionId)
-  return (count ?? 0) + 1
-}
 
 /**
  * Sends Urushi's spoken intervention back into the meeting via whatever the
@@ -630,12 +698,10 @@ export async function speakInMeeting(
 /**
  * Sets what the camera tile shows, immediately.
  *
- * Reads and rewrites runtime_state rather than going through the in-memory
+ * Merges just the two status keys rather than going through the in-memory
  * `state` the controller carries, because that is persisted only at the end of
  * a turn and the whole point is that the tile changes NOW, before Stage B, TTS
- * and delivery. Read-modify-write on a JSON column can lose a concurrent
- * speech_on/off update; a lost status flip is the smaller harm and is corrected
- * by the next one.
+ * and delivery.
  */
 async function writeBotStatus(
   db: ServiceClient,
@@ -643,9 +709,7 @@ async function writeBotStatus(
   status: 'listening' | 'thinking' | 'speaking'
 ): Promise<void> {
   try {
-    const { data } = await db.from('meeting_sessions').select('runtime_state').eq('id', sessionId).maybeSingle()
-    const current = parseRuntimeStateForFloor((data as { runtime_state?: unknown } | null)?.runtime_state)
-    await db.from('meeting_sessions').update({ runtime_state: setBotStatus(current, status, Date.now()) }).eq('id', sessionId)
+    await mergeRuntimeState(db, sessionId, { botStatus: status, botStatusAt: Date.now() })
   } catch (err) {
     // The tile is a courtesy; a failure to update it must never stop Urushi speaking.
     console.warn('[meeting pipeline] could not update bot status tile:', err instanceof Error ? err.message : err)

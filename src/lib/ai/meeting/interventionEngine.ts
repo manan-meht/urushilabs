@@ -420,9 +420,23 @@ export async function decideIntervention(ctx: EngineContext): Promise<Interventi
  * Stage B. Only called when Stage A approved an intervention. Uses the full
  * persona prompt so wording carries personality, region, language and entry style.
  */
+/** Returned by generateInterventionSpeech when the point no longer fits the conversation. */
+export const SKIP_INTERVENTION = '__SKIP__'
+
+export interface SpeechOptions {
+  /**
+   * Lines the room said while Stage A and Stage B were running. Set when the
+   * transcript moved on under us: the model may adapt the point to what was
+   * just said, or decline. Without this Urushi committed to a line decided
+   * against a moment the room had already left.
+   */
+  movedOn?: Array<{ speaker: string; text: string }>
+}
+
 export async function generateInterventionSpeech(
   ctx: EngineContext,
-  decision: InterventionDecision
+  decision: InterventionDecision,
+  options: SpeechOptions = {}
 ): Promise<string> {
   if (!decision.reason) throw new Error('Cannot generate speech without a decision reason.')
 
@@ -455,12 +469,21 @@ export async function generateInterventionSpeech(
     ? `\nPrivate pre-meeting perspectives (hypotheses — never quote or attribute these aloud; reframe neutrally):\n${ctx.perspectives.map((p) => `${p.participantName}: ${p.perspective}`).join('\n')}\n`
     : ''
 
+  const movedOn = options.movedOn?.length
+    ? `
+While you were deciding, the conversation moved on. Said since:
+${options.movedOn.map((t) => `${t.speaker}: ${t.text}`).join('\n')}
+
+You were going to speak about what came before this. If the point still matters, make it in a way that fits what was just said. If the room has genuinely moved past it, reply with exactly ${SKIP_INTERVENTION} and nothing else.
+`
+    : ''
+
   const user = `Conversation so far (oldest first):
 ${ctx.recentTranscript.map((t) => `${t.speaker}: ${t.text}`).join('\n') || '(nothing yet)'}
 
 Just said:
 ${ctx.latestUtterance.speaker}: ${ctx.latestUtterance.text}
-${perspectives}
+${perspectives}${movedOn}
 Say your piece now.`
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -491,6 +514,9 @@ Say your piece now.`
   // Models occasionally wrap spoken lines in quotes or prefix a speaker label
   // despite the instruction; strip both so nothing odd reaches the TTS layer.
   const cleaned = text.replace(/^["'`]+|["'`]+$/g, '').replace(/^Urushi:\s*/i, '').trim()
+  if (options.movedOn?.length && cleaned.replace(/[^A-Z_]/g, '') === SKIP_INTERVENTION.replace(/[^A-Z_]/g, '')) {
+    return SKIP_INTERVENTION
+  }
   return capToSentences(cleaned, 2)
 }
 

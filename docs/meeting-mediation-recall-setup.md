@@ -199,3 +199,22 @@ behavior (step 9) — Urushi's status should show `waiting_room` until admitted.
   `participant_events.join` — verify this works reliably with real Google
   Meet/Zoom display names, especially when they don't exactly match the names
   entered at setup.
+
+
+## Transcription engine
+
+Bots request Recall's own streaming transcription in low-latency mode for
+English sessions (`recallai_streaming`, `prioritize_low_latency`, US$0.15 per
+recording hour). Platform captions (`meeting_captions`) were free but arrived
+53 s late at the median and minutes late for anyone speaking at length, with no
+partial results, so Urushi answered points the room had already left.
+
+Low-latency Recall streaming is English only. Hindi and Hinglish sessions use
+Deepgram nova-3 in multilingual (code-switching) mode **once a Deepgram key is
+registered in the Recall dashboard** (Transcription → Deepgram → add API key and
+project ID). Then set the Worker var `RECALL_MULTILINGUAL_PROVIDER=deepgram` in
+`wrangler.jsonc`. Until then non-English sessions fall back to platform captions
+and are slow.
+
+Bots store no video (`video_mixed_mp4: null`) and keep audio artefacts for 24
+hours (`retention: timed`); the transcript rows in our database are the record.

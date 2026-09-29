@@ -20,6 +20,12 @@ export interface CreateBotParams {
   idempotencyKey: string
   /** Where the provider should send webhook events for this bot. */
   webhookUrl: string
+  /**
+   * The conversation's language, which decides the transcription engine. Low
+   * latency streaming is English-only at Recall; other languages need a
+   * multilingual provider or fall back to platform captions.
+   */
+  language?: 'english' | 'hindi' | 'hinglish' | 'auto'
 }
 
 export interface ScheduleBotParams extends CreateBotParams {

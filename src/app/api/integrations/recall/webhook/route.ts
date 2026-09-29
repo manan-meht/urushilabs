@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/db/client'
 import { getMeetingBotProvider } from '@/lib/meeting/providerFactory'
 import { ingestMeetingTranscriptSegment, speakInMeeting, recordAssistantSegment, MEETING_INTRODUCTION } from '@/lib/meeting/pipeline'
-import { parseRuntimeState, markSpeaking, markPartial } from '@/lib/meeting/runtimeState'
+import { mergeRuntimeState, speakingPatch } from '@/lib/meeting/runtimeStateStore'
 import { statusTileUrl } from '@/lib/meeting/statusTile'
 import { completeMeetingSession } from '@/lib/meeting/completeSession'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
@@ -23,6 +23,25 @@ import type { DbMeetingSession } from '@/lib/db/types'
  * meeting_provider_events' unique (bot_provider, provider_event_id) constraint:
  * a retried delivery is a harmless duplicate-insert no-op, never reprocessed.
  */
+/**
+ * Runs work after the 200 has gone back to Recall.
+ *
+ * The transcript handler used to be awaited inline — Stage A, Stage B, a
+ * twelve-second floor wait, TTS and delivery, all before Recall got its
+ * response. Recall retries on non-2xx only, and everything it had queued sat
+ * behind us. Cloudflare's waitUntil keeps the Worker alive for the promise;
+ * locally there is no such context and we simply await.
+ */
+function runInBackground(label: string, work: Promise<unknown>): Promise<void> {
+  const guarded = work.catch((err) => console.error(`[recall webhook] ${label} failed:`, err))
+  try {
+    getCloudflareContext().ctx.waitUntil(guarded)
+    return Promise.resolve()
+  } catch {
+    return guarded.then(() => undefined)
+  }
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
   const provider = getMeetingBotProvider()
@@ -154,7 +173,7 @@ async function processEvent(db: ReturnType<typeof getServiceClient>, event: Norm
             }
           }
 
-          await speakInMeeting(meetingSession, MEETING_INTRODUCTION)
+          await runInBackground('introduction', speakInMeeting(meetingSession, MEETING_INTRODUCTION))
         }
         break
       }
@@ -186,29 +205,23 @@ async function processEvent(db: ReturnType<typeof getServiceClient>, event: Norm
 
       case 'participant_speaking': {
         // Keeps runtime_state.speakingNow current so speakInMeeting can wait
-        // for a clear floor. Read-modify-write on a JSON column: two speech
-        // events landing in the same instant can lose one update. Tolerable
-        // here — a lost speech_off is bounded by the staleness cutoff in
-        // isFloorOccupied, and a lost speech_on costs one possible overlap
-        // rather than muting anyone.
+        // for a clear floor. A merge of this one participant's entry, so it
+        // survives the pipeline persisting its own keys mid-flight — the
+        // whole-object write it replaced lost every one of these.
         if (event.participant) {
           const at = Date.parse(event.occurredAt) || Date.now()
-          const before = parseRuntimeState((meetingSession as unknown as { runtime_state?: unknown }).runtime_state)
           const speaking = event.speaking === true
-          let after = markSpeaking(before, event.participant.providerParticipantId, speaking, at)
           // A partial transcript arrives as speaking:true; it also marks the
           // moment, so a gap in speech_on/off coverage still reads as occupied.
-          if (speaking && (event.raw as { event?: string })?.event === 'transcript.partial_data') {
-            after = markPartial(after, at)
-          }
-          await db.from('meeting_sessions').update({ runtime_state: after }).eq('id', meetingSession.id)
+          const partial = speaking && (event.raw as { event?: string })?.event === 'transcript.partial_data'
+          await mergeRuntimeState(db, meetingSession.id, speakingPatch(event.participant.providerParticipantId, speaking, at, partial))
         }
         break
       }
 
       case 'transcript_segment':
         if (event.transcriptSegment) {
-          await ingestMeetingTranscriptSegment({
+          await runInBackground('transcript ingest', ingestMeetingTranscriptSegment({
             sessionId: meetingSession.id,
             providerParticipantId: event.transcriptSegment.providerParticipantId,
             speakerName: event.transcriptSegment.speakerName,
@@ -216,7 +229,7 @@ async function processEvent(db: ReturnType<typeof getServiceClient>, event: Norm
             startedAt: event.transcriptSegment.startedAt,
             endedAt: event.transcriptSegment.endedAt,
             confidence: event.transcriptSegment.confidence,
-          })
+          }))
         }
         break
 
@@ -234,17 +247,7 @@ async function processEvent(db: ReturnType<typeof getServiceClient>, event: Norm
         // as soon as this webhook's HTTP response is sent, killing the promise
         // mid-flight and leaving final_report permanently null (same pattern as
         // src/app/api/intake/complete/route.ts).
-        let cfCtx: { waitUntil: (p: Promise<unknown>) => void } | null = null
-        try { cfCtx = getCloudflareContext().ctx } catch { /* local dev — no CF context */ }
-
-        const reportPromise = completeMeetingSession(meetingSession.id).catch((err) =>
-          console.error('[recall webhook] completeMeetingSession failed:', err))
-
-        if (cfCtx) {
-          cfCtx.waitUntil(reportPromise)
-        } else {
-          await reportPromise
-        }
+        await runInBackground('completeMeetingSession', completeMeetingSession(meetingSession.id))
         break
       }
 

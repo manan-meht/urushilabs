@@ -37,6 +37,8 @@ export interface EnvConfig {
   RECALL_WEBHOOK_SECRET?: string
   RECALL_WEBHOOK_URL?: string
   RECALL_BOT_NAME: string
+  /** 'deepgram' once a Deepgram key is registered in the Recall dashboard; empty falls back to captions for non-English. */
+  RECALL_MULTILINGUAL_PROVIDER?: string
 }
 
 const REQUIRED_VARS = [
@@ -123,5 +125,6 @@ export function getEnv(): EnvConfig {
     RECALL_WEBHOOK_SECRET: process.env['RECALL_WEBHOOK_SECRET'],
     RECALL_WEBHOOK_URL: process.env['RECALL_WEBHOOK_URL'],
     RECALL_BOT_NAME: process.env['RECALL_BOT_NAME'] ?? 'Urushi — AI Mediator',
+    RECALL_MULTILINGUAL_PROVIDER: process.env['RECALL_MULTILINGUAL_PROVIDER'] || undefined,
   }
 }

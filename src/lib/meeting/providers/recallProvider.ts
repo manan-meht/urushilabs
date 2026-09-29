@@ -84,6 +84,53 @@ const STATUS_CODE_MAP: Record<string, ProviderBotStatus> = {
 
 const WEBHOOK_TOLERANCE_SECONDS = 5 * 60
 
+/**
+ * Which transcription engine to ask Recall for.
+ *
+ * The bot ran on `meeting_captions` — Google Meet's own captions, scraped from
+ * the UI. Free, but a caption block for someone speaking at length is only
+ * committed when Meet decides to: in one session the median segment arrived 53 s
+ * after it was said, one speaker's median was 188 s, and no partials came at
+ * all. Urushi answered points the room had left minutes earlier.
+ *
+ * Recall's own streaming engine in low-latency mode delivers 1-3 s after an
+ * utterance, with partials in the hundreds of ms, for US$0.15/h. It is English
+ * only. For Hindi and Hinglish, Deepgram nova-3 in multilingual mode streams
+ * with code-switching, but needs a Deepgram key added in the Recall dashboard
+ * — gated on RECALL_MULTILINGUAL_PROVIDER until that is done, falling back to
+ * captions so a Hindi session still transcribes, slowly, rather than not at all.
+ */
+export function transcriptProviderConfig(
+  language: CreateBotParams['language'],
+  multilingualProvider: string | undefined,
+): Record<string, unknown> {
+  if (language === 'english') {
+    return { recallai_streaming: { mode: 'prioritize_low_latency', language_code: 'en' } }
+  }
+  if (multilingualProvider === 'deepgram') {
+    return { deepgram_streaming: { model: 'nova-3', language: 'multi' } }
+  }
+  if (language) {
+    console.warn(`[recall] no multilingual streaming provider configured; ${language} session will use platform captions (slow).`)
+  }
+  return { meeting_captions: {} }
+}
+
+/** Shared bot recording config. Transcript only: no stored video, and audio artefacts gone within a day. */
+function recordingConfig(params: CreateBotParams): Record<string, unknown> {
+  const { RECALL_MULTILINGUAL_PROVIDER } = getEnv()
+  return {
+    transcript: { provider: transcriptProviderConfig(params.language, RECALL_MULTILINGUAL_PROVIDER) },
+    realtime_endpoints: [
+      { type: 'webhook', url: params.webhookUrl, events: REALTIME_EVENTS },
+    ],
+    // Urushi needs the words, not the picture. Video is on by default and is
+    // the bulk of what Recall would store.
+    video_mixed_mp4: null,
+    retention: { type: 'timed', hours: 24 },
+  }
+}
+
 export class RecallMeetingBotProvider implements MeetingBotProvider {
   readonly name = 'recall' as const
 
@@ -119,12 +166,7 @@ export class RecallMeetingBotProvider implements MeetingBotProvider {
       body: JSON.stringify({
         meeting_url: params.meetingUrl,
         bot_name: params.botDisplayName || RECALL_BOT_NAME,
-        recording_config: {
-          transcript: { provider: { meeting_captions: {} } },
-          realtime_endpoints: [
-            { type: 'webhook', url: params.webhookUrl, events: REALTIME_EVENTS },
-          ],
-        },
+        recording_config: recordingConfig(params),
         metadata: { idempotency_key: params.idempotencyKey },
       }),
     })
@@ -149,12 +191,7 @@ export class RecallMeetingBotProvider implements MeetingBotProvider {
         meeting_url: params.meetingUrl,
         bot_name: params.botDisplayName || RECALL_BOT_NAME,
         join_at: params.joinAt,
-        recording_config: {
-          transcript: { provider: { meeting_captions: {} } },
-          realtime_endpoints: [
-            { type: 'webhook', url: params.webhookUrl, events: REALTIME_EVENTS },
-          ],
-        },
+        recording_config: recordingConfig(params),
         metadata: { idempotency_key: params.idempotencyKey },
       }),
     })
