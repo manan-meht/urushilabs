@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { costOf, hasRate, MODEL_RATES, REALTIME_AUDIO_RATES } from './modelCosts'
+import { costOf, hasRate, MODEL_RATES, REALTIME_AUDIO_RATES, ttsCostOf, meetingBotCostOf, estimateSpokenSeconds } from './modelCosts'
 
 describe('costOf', () => {
   it('prices a typical controller call', () => {
@@ -62,5 +62,32 @@ describe('costOf', () => {
         expect(r.cachedInputPerMillion, model).toBeLessThan(r.inputPerMillion)
       }
     }
+  })
+})
+
+describe('meeting cost helpers', () => {
+  it('prices generated speech per minute', () => {
+    expect(ttsCostOf('gpt-4o-mini-tts', 60)).toBeCloseTo(0.015, 6)
+    expect(ttsCostOf('gpt-4o-mini-tts', 0)).toBe(0)
+    expect(ttsCostOf('unknown-tts', 60)).toBe(0)
+  })
+
+  it('prices the meeting bot per hour', () => {
+    expect(meetingBotCostOf(3600)).toBeCloseTo(0.5, 6)
+    expect(meetingBotCostOf(0)).toBe(0)
+  })
+
+  it('estimates spoken seconds from word count at conversational pace', () => {
+    expect(estimateSpokenSeconds('')).toBe(0)
+    expect(estimateSpokenSeconds('one two three four five')).toBeCloseTo(2, 6)
+  })
+
+  it('a 45-minute meeting with typical usage lands well under the credit price', () => {
+    // 21 interventions × (Stage A ~2k in + Stage B ~3k in, ~200 out) + report,
+    // 85% cache hit, plus TTS and bot time. The figure that answers "is US$3 profitable".
+    const tokens = { inputTokens: 21 * 5_000 + 12_000, outputTokens: 21 * 200 + 2_000, cachedInputTokens: Math.round(0.85 * (21 * 5_000 + 12_000)) }
+    const total = costOf('gpt-6-luna', tokens) + ttsCostOf('gpt-4o-mini-tts', 21 * 8) + meetingBotCostOf(45 * 60)
+    expect(total).toBeLessThan(0.6)
+    expect(meetingBotCostOf(45 * 60)).toBeGreaterThan(costOf('gpt-6-luna', tokens))
   })
 })

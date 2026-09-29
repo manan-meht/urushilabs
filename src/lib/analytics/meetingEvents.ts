@@ -6,6 +6,7 @@
  */
 
 import type { getServiceClient } from '@/lib/db/client'
+import { costOf, ttsCostOf } from '@/lib/billing/modelCosts'
 
 type ServiceClient = ReturnType<typeof getServiceClient>
 
@@ -49,47 +50,62 @@ export async function trackMeetingEvent(
 }
 
 /**
- * Usage/cost accounting hook (spec §39) — upserts into meeting_usage. Internal
- * only; never surfaced to customers. Safe to call incrementally throughout a
- * session (e.g. once per intervention, once at completion for duration/tokens).
+ * Records one increment of work against a meeting session's usage row.
+ *
+ * Every field is additive except duration and provider cost, which are set.
+ * The write is a single RPC (record_meeting_usage, migration 023) so concurrent
+ * webhooks cannot lose each other's updates: the previous read-modify-write
+ * upsert raced Recall's end-of-meeting burst and every completed session ended
+ * up with zero tokens and no duration.
+ *
+ * Costs are computed here from the model name so call sites pass what they
+ * know (tokens, seconds) and pricing lives in one file. Never throws; usage
+ * recording happens beside the mediation, not in its way.
  */
 export async function recordMeetingUsage(
   db: ServiceClient,
   sessionId: string,
   delta: Partial<{
-    meetingDurationSeconds: number
+    model: string
+    openaiInputTokens: number
+    openaiCachedInputTokens: number
+    openaiOutputTokens: number
     transcriptSegmentIncrement: number
     interventionIncrement: number
-    openaiInputTokens: number
-    openaiOutputTokens: number
+    /** Seconds of speech synthesised; priced at ttsModel's per-minute rate. */
     generatedAudioSeconds: number
+    ttsModel: string
+    meetingDurationSeconds: number
+    /** Meeting-bot cost for the whole session; set, not added. */
+    providerCostUsd: number
   }>
 ): Promise<void> {
-  const { data: existing } = await db
-    .from('meeting_usage')
-    .select('*')
-    .eq('session_id', sessionId)
-    .single()
+  const inputTokens = delta.openaiInputTokens ?? 0
+  const cachedInputTokens = delta.openaiCachedInputTokens ?? 0
+  const outputTokens = delta.openaiOutputTokens ?? 0
+  const openaiCost = delta.model
+    ? costOf(delta.model, { inputTokens, outputTokens, cachedInputTokens })
+    : 0
+  const audioSeconds = delta.generatedAudioSeconds ?? 0
+  const ttsCost = delta.ttsModel ? ttsCostOf(delta.ttsModel, audioSeconds) : 0
 
-  const current = existing ?? {
-    session_id: sessionId,
-    meeting_duration_seconds: null,
-    transcript_segment_count: 0,
-    intervention_count: 0,
-    openai_input_tokens: 0,
-    openai_output_tokens: 0,
-    generated_audio_seconds: 0,
+  try {
+    const { error } = await db.rpc('record_meeting_usage', {
+      p_session_id: sessionId,
+      p_model: delta.model ?? null,
+      p_input_tokens: inputTokens,
+      p_cached_input_tokens: cachedInputTokens,
+      p_output_tokens: outputTokens,
+      p_openai_cost_usd: openaiCost,
+      p_segments: delta.transcriptSegmentIncrement ?? 0,
+      p_interventions: delta.interventionIncrement ?? 0,
+      p_audio_seconds: audioSeconds,
+      p_tts_cost_usd: ttsCost,
+      p_duration_seconds: delta.meetingDurationSeconds !== undefined ? Math.round(delta.meetingDurationSeconds) : null,
+      p_provider_cost_usd: delta.providerCostUsd ?? null,
+    })
+    if (error) console.error('[recordMeetingUsage] failed:', error.message)
+  } catch (err) {
+    console.error('[recordMeetingUsage] threw:', err instanceof Error ? err.message : err)
   }
-
-  const { error } = await db.from('meeting_usage').upsert({
-    session_id: sessionId,
-    meeting_duration_seconds: delta.meetingDurationSeconds ?? current.meeting_duration_seconds,
-    transcript_segment_count: current.transcript_segment_count + (delta.transcriptSegmentIncrement ?? 0),
-    intervention_count: current.intervention_count + (delta.interventionIncrement ?? 0),
-    openai_input_tokens: current.openai_input_tokens + (delta.openaiInputTokens ?? 0),
-    openai_output_tokens: current.openai_output_tokens + (delta.openaiOutputTokens ?? 0),
-    generated_audio_seconds: current.generated_audio_seconds + (delta.generatedAudioSeconds ?? 0),
-  })
-
-  if (error) console.error('[recordMeetingUsage] failed to upsert usage:', error.message)
 }

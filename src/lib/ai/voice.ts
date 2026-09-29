@@ -60,6 +60,11 @@ export interface SynthesizeSpeechOptions {
   instructions?: string
 }
 
+/** The TTS model synthesizeSpeech will use, for cost attribution. */
+export function ttsModelName(): string {
+  return process.env['OPENAI_TTS_MODEL'] ?? 'gpt-4o-mini-tts'
+}
+
 export async function synthesizeSpeech(text: string, options: SynthesizeSpeechOptions = {}): Promise<Buffer> {
   const { OPENAI_API_KEY } = getEnv()
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.')
@@ -74,7 +79,7 @@ export async function synthesizeSpeech(text: string, options: SynthesizeSpeechOp
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: process.env['OPENAI_TTS_MODEL'] ?? 'gpt-4o-mini-tts',
+      model: ttsModelName(),
       voice,
       input,
       instructions: options.instructions ?? TTS_INSTRUCTIONS,

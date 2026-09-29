@@ -49,6 +49,7 @@ export interface MeetingFinalReportResult {
   report: MeetingFinalReport
   inputTokens: number
   outputTokens: number
+  cachedInputTokens?: number
 }
 
 export async function generateMeetingFinalReport(ctx: MeetingFinalReportContext): Promise<MeetingFinalReportResult> {
@@ -72,6 +73,7 @@ export async function generateMeetingFinalReport(ctx: MeetingFinalReportContext)
       },
       inputTokens: 0,
       outputTokens: 0,
+      cachedInputTokens: 0,
     }
   }
 
@@ -145,7 +147,7 @@ ${transcriptText}`
 
   const data = await res.json() as {
     choices?: Array<{ message?: { content?: string } }>
-    usage?: { prompt_tokens: number; completion_tokens: number }
+    usage?: { prompt_tokens: number; completion_tokens: number; prompt_tokens_details?: { cached_tokens?: number } }
   }
 
   const raw = data.choices?.[0]?.message?.content
@@ -167,5 +169,6 @@ ${transcriptText}`
     report: validated.data as MeetingFinalReport & { safetyCategory: SafetyCategory },
     inputTokens: data.usage?.prompt_tokens ?? 0,
     outputTokens: data.usage?.completion_tokens ?? 0,
+    cachedInputTokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,
   }
 }

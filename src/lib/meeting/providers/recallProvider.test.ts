@@ -48,11 +48,13 @@ describe('RecallMeetingBotProvider.verifyWebhook', () => {
     const rawBody = JSON.stringify({ event: 'bot.status_change' })
     const id = 'msg_1'
     const timestamp = '1700000000'
+    const now = 1_700_000_000_000 + 30_000
     const signature = signPayload(id, timestamp, rawBody)
 
     expect(provider.verifyWebhook({
       rawBody,
       headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': signature },
+      now,
     })).toBe(true)
   })
 
@@ -61,11 +63,50 @@ describe('RecallMeetingBotProvider.verifyWebhook', () => {
     const provider = new RecallMeetingBotProvider()
     const id = 'msg_1'
     const timestamp = '1700000000'
+    const now = 1_700_000_000_000 + 30_000
     const signature = signPayload(id, timestamp, JSON.stringify({ event: 'bot.status_change' }))
 
     expect(provider.verifyWebhook({
       rawBody: JSON.stringify({ event: 'bot.fatal' }),
       headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': signature },
+    })).toBe(false)
+  })
+
+  it('rejects a correctly signed payload older than five minutes', () => {
+    envWith()
+    const provider = new RecallMeetingBotProvider()
+    const rawBody = JSON.stringify({ event: 'bot.status_change' })
+    const id = 'msg_old'
+    const timestamp = '1700000000'
+    const signature = signPayload(id, timestamp, rawBody)
+
+    expect(provider.verifyWebhook({
+      rawBody,
+      headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': signature },
+      now: 1_700_000_000_000 + 6 * 60_000,
+    })).toBe(false)
+  })
+
+  it('rejects a payload timestamped in the future beyond the window', () => {
+    envWith()
+    const provider = new RecallMeetingBotProvider()
+    const rawBody = '{}'
+    const signature = signPayload('msg_f', '1700000000', rawBody)
+    expect(provider.verifyWebhook({
+      rawBody,
+      headers: { 'webhook-id': 'msg_f', 'webhook-timestamp': '1700000000', 'webhook-signature': signature },
+      now: 1_700_000_000_000 - 6 * 60_000,
+    })).toBe(false)
+  })
+
+  it('rejects a non-numeric timestamp even when the signature is over it', () => {
+    envWith()
+    const provider = new RecallMeetingBotProvider()
+    const signature = signPayload('msg_n', 'yesterday', '{}')
+    expect(provider.verifyWebhook({
+      rawBody: '{}',
+      headers: { 'webhook-id': 'msg_n', 'webhook-timestamp': 'yesterday', 'webhook-signature': signature },
+      now: 1_700_000_000_000,
     })).toBe(false)
   })
 

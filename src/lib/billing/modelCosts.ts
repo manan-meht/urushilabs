@@ -45,6 +45,24 @@ export const TRANSCRIPTION_PER_MINUTE: Record<string, number> = {
   'gpt-transcribe': 0.0045,
 }
 
+/**
+ * USD per minute of generated speech. OpenAI bills TTS per token, but the
+ * speech endpoint returns bytes and no usage block, so the per-minute figure
+ * OpenAI publishes alongside the token rate is the only thing we can apply.
+ */
+export const TTS_PER_MINUTE: Record<string, number> = {
+  'gpt-4o-mini-tts': 0.015,
+  'tts-1': 0.015,
+  'tts-1-hd': 0.03,
+}
+
+/**
+ * Meeting bot, USD per hour of bot time. Recall.ai's published pay-as-you-go
+ * rate as read off the dashboard in September 2026; the first hours were on a
+ * free tier, so early sessions cost less than this reports.
+ */
+export const MEETING_BOT_PER_HOUR = 0.5
+
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
@@ -71,6 +89,31 @@ export function costOf(model: string, usage: TokenUsage, rates = MODEL_RATES): n
     (cached * (rate.cachedInputPerMillion ?? rate.inputPerMillion)) / 1_000_000 +
     (usage.outputTokens * rate.outputPerMillion) / 1_000_000
   )
+}
+
+/** Cost of `seconds` of generated speech, in USD. Unknown model → 0, same rule as costOf. */
+export function ttsCostOf(model: string, seconds: number, rates = TTS_PER_MINUTE): number {
+  const perMinute = rates[model]
+  if (!perMinute || !(seconds > 0)) return 0
+  return (seconds / 60) * perMinute
+}
+
+/** Meeting bot cost for a session of `seconds`, in USD. */
+export function meetingBotCostOf(seconds: number, perHour = MEETING_BOT_PER_HOUR): number {
+  if (!(seconds > 0)) return 0
+  return (seconds / 3600) * perHour
+}
+
+/**
+ * Seconds a line will take to say aloud. The speech endpoint does not report
+ * duration, and decoding the MP3 to find out is not worth it for a cost
+ * estimate; 2.5 words a second is ordinary conversational pace, a little
+ * slower than the 2.7 that read-aloud prose averages, because Urushi's lines
+ * are short and start from a pause.
+ */
+export function estimateSpokenSeconds(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length
+  return words / 2.5
 }
 
 /** Whether we have a published rate for this model, for reporting gaps. */

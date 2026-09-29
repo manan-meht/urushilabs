@@ -48,6 +48,40 @@ import { buildMeetingSystemPrompt } from './personaPrompt'
 import { detectRoomLanguage } from './languageDetection'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
 import { completionParams } from '@/lib/ai/modelParams'
+import type { TokenUsage } from '@/lib/billing/modelCosts'
+
+/** One model call's token usage, handed to EngineContext.onUsage for cost recording. */
+export interface ModelUsageReport {
+  stage: 'decision' | 'speech'
+  model: string
+  usage: TokenUsage
+}
+
+interface ChatCompletionResponse {
+  choices?: Array<{ message?: { content?: string } }>
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number }
+  }
+}
+
+function reportUsage(ctx: EngineContext, stage: ModelUsageReport['stage'], model: string, data: ChatCompletionResponse): void {
+  if (!ctx.onUsage || !data.usage) return
+  try {
+    ctx.onUsage({
+      stage,
+      model,
+      usage: {
+        inputTokens: data.usage.prompt_tokens ?? 0,
+        outputTokens: data.usage.completion_tokens ?? 0,
+        cachedInputTokens: data.usage.prompt_tokens_details?.cached_tokens ?? 0,
+      },
+    })
+  } catch (err) {
+    console.error('[interventionEngine] onUsage threw:', err instanceof Error ? err.message : err)
+  }
+}
 
 export interface InterventionDecision {
   shouldIntervene: boolean
@@ -79,6 +113,8 @@ export interface EngineContext {
   /** Private pre-meeting perspectives — never to be quoted aloud. */
   perspectives?: Array<{ participantName: string; perspective: string }>
   now?: number
+  /** Called after each model call with its token usage. Must not throw; errors are swallowed. */
+  onUsage?: (report: ModelUsageReport) => void
 }
 
 // ─── Stage 0: deterministic pre-gate ─────────────────────────────────────────
@@ -363,7 +399,8 @@ export async function decideIntervention(ctx: EngineContext): Promise<Interventi
     throw new Error(`Intervention decision failed (${res.status}): ${await res.text()}`)
   }
 
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+  const data = await res.json() as ChatCompletionResponse
+  reportUsage(ctx, 'decision', OPENAI_MODEL, data)
   const rawContent = data.choices?.[0]?.message?.content
   if (!rawContent) throw new Error('Empty decision response.')
 
@@ -446,7 +483,8 @@ Say your piece now.`
     throw new Error(`Intervention speech failed (${res.status}): ${await res.text()}`)
   }
 
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+  const data = await res.json() as ChatCompletionResponse
+  reportUsage(ctx, 'speech', OPENAI_MODEL, data)
   const text = data.choices?.[0]?.message?.content?.trim()
   if (!text) throw new Error('Empty speech response.')
 

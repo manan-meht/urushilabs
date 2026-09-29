@@ -82,6 +82,8 @@ const STATUS_CODE_MAP: Record<string, ProviderBotStatus> = {
   fatal: 'error',
 }
 
+const WEBHOOK_TOLERANCE_SECONDS = 5 * 60
+
 export class RecallMeetingBotProvider implements MeetingBotProvider {
   readonly name = 'recall' as const
 
@@ -270,6 +272,16 @@ export class RecallMeetingBotProvider implements MeetingBotProvider {
     const timestamp = input.headers['webhook-timestamp'] ?? input.headers['svix-timestamp']
     const signatureHeader = input.headers['webhook-signature'] ?? input.headers['svix-signature']
     if (!id || !timestamp || !signatureHeader) return false
+
+    // Replay window. A correctly signed payload used to verify regardless of
+    // age, so anyone who captured one delivery could re-send it for as long as
+    // the secret lived — including a meeting_ended for a session still in
+    // progress. Svix's own tolerance is five minutes; match it. The header is
+    // seconds since the epoch.
+    const ts = Number(timestamp)
+    if (!Number.isFinite(ts)) return false
+    const nowSeconds = (input.now ?? Date.now()) / 1000
+    if (Math.abs(nowSeconds - ts) > WEBHOOK_TOLERANCE_SECONDS) return false
 
     const secretB64 = RECALL_WEBHOOK_SECRET.startsWith('whsec_')
       ? RECALL_WEBHOOK_SECRET.slice('whsec_'.length)

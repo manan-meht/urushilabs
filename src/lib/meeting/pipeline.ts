@@ -14,7 +14,8 @@
 import { getServiceClient } from '@/lib/db/client'
 import { decryptFromDb } from '@/lib/crypto'
 import { getMeetingBotProvider } from './providerFactory'
-import { synthesizeSpeech } from '@/lib/ai/voice'
+import { synthesizeSpeech, ttsModelName } from '@/lib/ai/voice'
+import { estimateSpokenSeconds } from '@/lib/billing/modelCosts'
 import type {
   MeetingTranscriptEntry,
   ParticipantPerspective,
@@ -306,6 +307,15 @@ async function runMediationController(
     latestUtterance: { speaker: latest.speakerName, text: latest.content },
     recentTranscript,
     ...(perspectives.length > 0 ? { perspectives } : {}),
+    // Fire-and-forget: the RPC is atomic and never throws back into the turn.
+    onUsage: (r) => {
+      void recordMeetingUsage(db, session.id, {
+        model: r.model,
+        openaiInputTokens: r.usage.inputTokens,
+        openaiCachedInputTokens: r.usage.cachedInputTokens ?? 0,
+        openaiOutputTokens: r.usage.outputTokens,
+      })
+    },
   }
 
   // ── Stage A: should Urushi speak at all? ───────────────────────────────────
@@ -599,6 +609,10 @@ export async function speakInMeeting(
       providerBotId: session.provider_bot_id,
       audio: audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) as ArrayBuffer,
       mimeType: 'audio/mp3',
+    })
+    void recordMeetingUsage(db, session.id, {
+      generatedAudioSeconds: estimateSpokenSeconds(spokenText),
+      ttsModel: ttsModelName(),
     })
   } catch (err) {
     console.error('[meeting pipeline] failed to synthesize/send speech:', err)

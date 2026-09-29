@@ -7,6 +7,8 @@
  */
 
 import { getServiceClient } from '@/lib/db/client'
+import { getEnv } from '@/lib/env'
+import { meetingBotCostOf } from '@/lib/billing/modelCosts'
 import { generateMeetingFinalReport } from '@/lib/ai/meeting/finalReport'
 import { getEffectiveSettings } from '@/lib/conversation/getSettings'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS, recordMeetingUsage } from '@/lib/analytics/meetingEvents'
@@ -72,12 +74,21 @@ export async function completeMeetingSession(sessionId: string): Promise<Complet
 
   await db.from('cases').update({ status: 'report_ready' }).eq('id', meetingSession.case_id)
 
+  // Duration comes from the session's own timestamps, not the clock: a report
+  // regenerated the next day must not bill a day of bot time.
+  const endedAtMs = new Date(meetingSession.ended_at ?? now).getTime()
+  const durationSeconds = meetingSession.joined_at
+    ? Math.max(0, (endedAtMs - new Date(meetingSession.joined_at).getTime()) / 1000)
+    : undefined
+
   await recordMeetingUsage(db, sessionId, {
+    model: getEnv().OPENAI_MODEL,
     openaiInputTokens: result.inputTokens,
+    openaiCachedInputTokens: result.cachedInputTokens ?? 0,
     openaiOutputTokens: result.outputTokens,
-    meetingDurationSeconds: meetingSession.joined_at
-      ? (Date.now() - new Date(meetingSession.joined_at).getTime()) / 1000
-      : undefined,
+    ...(durationSeconds !== undefined
+      ? { meetingDurationSeconds: durationSeconds, providerCostUsd: meetingBotCostOf(durationSeconds) }
+      : {}),
   })
 
   await trackMeetingEvent(db, { caseId: meetingSession.case_id, event: MEETING_ANALYTICS_EVENTS.REPORT_GENERATED })

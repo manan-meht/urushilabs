@@ -112,6 +112,8 @@ export interface NormalizedProviderEvent {
 export interface WebhookVerificationInput {
   rawBody: string
   headers: Record<string, string | null>
+  /** Current time in ms, for the timestamp window. Defaults to Date.now(); tests pin it. */
+  now?: number
 }
 
 /**
