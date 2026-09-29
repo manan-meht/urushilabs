@@ -91,7 +91,36 @@ export function parseRuntimeState(raw: unknown): RuntimeState {
     recentInterventions: r.recentInterventions ?? [],
     ...(r.startedAt !== undefined ? { startedAt: r.startedAt } : {}),
     ...(r.lastUtteranceAt !== undefined ? { lastUtteranceAt: r.lastUtteranceAt } : {}),
+
+    // Floor tracking and the camera-tile status. This parser is a whitelist —
+    // anything not named here is dropped on every read — and these were added
+    // to the interface without being added here. The database held
+    // botStatus: "thinking" while the endpoint returned "listening", and the
+    // same silent drop made speakingNow always empty, so the floor check
+    // deployed to stop Urushi talking over people always saw a clear floor and
+    // did nothing. Caught by reading the raw row; the helper tests round-tripped
+    // nothing through persistence.
+    speakingNow: sanitizeSpeakingNow(r.speakingNow),
+    ...(typeof r.lastPartialAt === 'number' ? { lastPartialAt: r.lastPartialAt } : {}),
+    ...(isBotStatus(r.botStatus) ? { botStatus: r.botStatus } : {}),
+    ...(typeof r.botStatusAt === 'number' ? { botStatusAt: r.botStatusAt } : {}),
   }
+}
+
+const BOT_STATUSES = new Set(['listening', 'thinking', 'speaking'])
+
+function isBotStatus(v: unknown): v is NonNullable<RuntimeState['botStatus']> {
+  return typeof v === 'string' && BOT_STATUSES.has(v)
+}
+
+/** Keeps only participantId -> finite epoch entries; a corrupt value must not poison the floor check. */
+function sanitizeSpeakingNow(v: unknown): Record<string, number> {
+  if (!v || typeof v !== 'object') return {}
+  const out: Record<string, number> = {}
+  for (const [k, at] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof at === 'number' && Number.isFinite(at)) out[k] = at
+  }
+  return out
 }
 
 // ─── Signal detection ─────────────────────────────────────────────────────────

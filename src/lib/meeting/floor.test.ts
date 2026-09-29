@@ -51,3 +51,30 @@ describe('bot status on the tile', () => {
     expect(isFloorOccupied(s, t0)).toBe(false)
   })
 })
+
+describe('floor and tile state survive persistence', () => {
+  // The test that was missing. The helpers above were tested in memory and
+  // never through parseRuntimeState, which is a whitelist: the fields existed
+  // on the interface, were written to the database correctly, and were dropped
+  // on every read. The deployed floor check therefore always saw a clear floor.
+  it('round-trips speakingNow, lastPartialAt and botStatus through the parser', async () => {
+    const { parseRuntimeState, setBotStatus } = await import('./runtimeState')
+    let s = markSpeaking(EMPTY_RUNTIME_STATE, '42', true, t0)
+    s = markPartial(s, t0 + 500)
+    s = setBotStatus(s, 'thinking', t0 + 800)
+
+    const back = parseRuntimeState(JSON.parse(JSON.stringify(s)))
+    expect(back.speakingNow).toEqual({ '42': t0 })
+    expect(back.lastPartialAt).toBe(t0 + 500)
+    expect(back.botStatus).toBe('thinking')
+    expect(back.botStatusAt).toBe(t0 + 800)
+    expect(isFloorOccupied(back, t0 + 1_000)).toBe(true)
+  })
+
+  it('drops a corrupt speakingNow rather than letting it poison the floor check', async () => {
+    const { parseRuntimeState } = await import('./runtimeState')
+    const back = parseRuntimeState({ speakingNow: { a: 'not-a-number', b: t0 }, botStatus: 'bogus' })
+    expect(back.speakingNow).toEqual({ b: t0 })
+    expect(back.botStatus).toBeUndefined()
+  })
+})
