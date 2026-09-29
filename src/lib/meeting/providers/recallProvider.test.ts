@@ -187,3 +187,55 @@ describe('RecallMeetingBotProvider.handleWebhook — normalization', () => {
     expect(provider.handleWebhook(JSON.stringify({ event: 'bot.status_change', data: { data: { code: 'joining_call' } } }))).toEqual([])
   })
 })
+
+describe('who is speaking — events that used to be thrown away', () => {
+  // participant_events.speech_on/off were in the subscribed list and fell
+  // through handleWebhook's final `return []`. They are the only direct signal
+  // of who has the floor, which is the one thing Urushi needs before playing
+  // audio: in two live sessions all eight of its interventions began while a
+  // human had already started talking.
+  it('maps speech_on and speech_off to participant_speaking', () => {
+    envWith()
+    const provider = new RecallMeetingBotProvider()
+    const on = provider.handleWebhook(JSON.stringify({
+      event: 'participant_events.speech_on',
+      id: 'evt_s1',
+      data: { bot: { id: 'bot_123' }, data: { participant: { id: 42, name: 'Sonam' } } },
+    }))
+    expect(on).toHaveLength(1)
+    expect(on[0]!.type).toBe('participant_speaking')
+    expect(on[0]!.speaking).toBe(true)
+    expect(on[0]!.participant?.providerParticipantId).toBe('42')
+
+    const off = provider.handleWebhook(JSON.stringify({
+      event: 'participant_events.speech_off',
+      id: 'evt_s2',
+      data: { bot: { id: 'bot_123' }, data: { participant: { id: 42, name: 'Sonam' } } },
+    }))
+    expect(off[0]!.type).toBe('participant_speaking')
+    expect(off[0]!.speaking).toBe(false)
+  })
+
+  it('treats a partial transcript as "still talking", not as a finished segment', () => {
+    // Partials were ingested identically to transcript.data, so one utterance
+    // landed several times and a half-sentence could trigger the whole engine
+    // while its speaker was mid-thought.
+    envWith()
+    const provider = new RecallMeetingBotProvider()
+    const events = provider.handleWebhook(JSON.stringify({
+      event: 'transcript.partial_data',
+      id: 'evt_p1',
+      data: {
+        bot: { id: 'bot_123' },
+        data: {
+          words: [{ text: 'The kickoff deck changed four', start_timestamp: { absolute: '2026-01-01T00:00:10Z' }, end_timestamp: { absolute: '2026-01-01T00:00:11Z' } }],
+          participant: { id: 42, name: 'Sonam' },
+        },
+      },
+    }))
+    expect(events).toHaveLength(1)
+    expect(events[0]!.type).toBe('participant_speaking')
+    expect(events[0]!.speaking).toBe(true)
+    expect(events[0]!.transcriptSegment).toBeUndefined()
+  })
+})

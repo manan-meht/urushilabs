@@ -321,7 +321,36 @@ export class RecallMeetingBotProvider implements MeetingBotProvider {
       return [{ ...base, type }]
     }
 
-    if (eventName === 'transcript.data' || eventName === 'transcript.partial_data') {
+    // A partial is a sentence still being spoken. It used to be ingested as a
+    // finished segment — so the same utterance landed several times, inflating
+    // the dominance and circularity signals, and worse, a half-sentence could
+    // trigger the whole engine while its speaker was still mid-thought. It is
+    // now exactly what it is: evidence that someone has the floor right now.
+    if (eventName === 'transcript.partial_data') {
+      const participant = payload.data?.data?.participant
+      if (participant?.id == null) return []
+      return [{
+        ...base,
+        type: 'participant_speaking',
+        speaking: true,
+        participant: { providerParticipantId: String(participant.id), displayName: participant.name ?? null },
+      }]
+    }
+
+    // These were subscribed and discarded. They are the only direct signal of
+    // who is talking, which is the one thing Urushi needs before it plays audio.
+    if (eventName === 'participant_events.speech_on' || eventName === 'participant_events.speech_off') {
+      const participant = payload.data?.data?.participant
+      if (participant?.id == null) return []
+      return [{
+        ...base,
+        type: 'participant_speaking',
+        speaking: eventName === 'participant_events.speech_on',
+        participant: { providerParticipantId: String(participant.id), displayName: participant.name ?? null },
+      }]
+    }
+
+    if (eventName === 'transcript.data') {
       const words = payload.data?.data?.words ?? []
       const text = words.map((w) => w.text).join(' ')
       if (!text) return []

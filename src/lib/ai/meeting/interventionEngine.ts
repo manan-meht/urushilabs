@@ -46,6 +46,7 @@ import { isTrivialUtterance } from './interventionGuardrails'
 import { overrideThresholdMultiplier, type OverrideState } from './overrideCommands'
 import { buildMeetingSystemPrompt } from './personaPrompt'
 import { detectRoomLanguage } from './languageDetection'
+import { detectDirectAddress } from '@/lib/ai/room/directAddress'
 import { completionParams } from '@/lib/ai/modelParams'
 
 export interface InterventionDecision {
@@ -109,6 +110,17 @@ export function preGate(ctx: EngineContext): PreGateResult {
   // An explicit invitation is honoured immediately.
   if (override.mode === 'STEP_IN') return { proceed: true }
 
+  // Being asked by name is never rationed either.
+  //
+  // Room mode has had this from the start. Meeting mode did not, and in two
+  // live sessions seven utterances addressed Urushi directly — "Urushi, do you
+  // want to summarise what we discussed?" — and every one hit the cooldown or
+  // budget below and was dropped before any model call. A mediator that goes
+  // quiet when spoken to reads as broken, not as disciplined.
+  if (detectDirectAddress(latestUtterance.text)) {
+    return { proceed: true, forcedReason: 'DIRECT_REQUEST' }
+  }
+
   if (isTrivialUtterance(latestUtterance.text)) {
     return { proceed: false, suppressedBy: 'trivial' }
   }
@@ -134,7 +146,7 @@ export function preGate(ctx: EngineContext): PreGateResult {
  * toward. The wording itself comes from the persona prompt in Stage B.
  */
 const PERSONALITY_SUMMARY: Record<MeetingPersonality, string> = {
-  diplomat: 'Diplomat — calm and constructive, surfaces misunderstandings and drives toward a way forward',
+  diplomat: 'Diplomat — calm and constructive, surfaces misunderstandings, credits people when they give ground, and drives toward a way forward',
   straight_shooter: 'Straight Shooter — blunt, calls out avoidance and contradiction',
   deal_maker: 'Deal Maker — practical, pushes trade-offs toward a concrete, specific agreement',
 }
@@ -169,6 +181,8 @@ Participation level: ${settings.interventionLevel}
 - A resolved discussion has no concrete next step (NEXT_STEP_NEEDED)
 - Someone is hedging, staying abstract, or answering a different question than the one asked instead of getting to the point (VAGUENESS)
 - Someone's claim isn't backed by anything actually said, their story doesn't add up, or the framing looks designed to manipulate rather than inform (UNSUPPORTED_CLAIM)
+- Someone offered a real concession — an apology, taking on cost or work themselves — and the other person has not acknowledged it (UNACKNOWLEDGED_CONCESSION). Weigh this heavily for the Diplomat: an unanswered concession is where a conversation quietly hardens.
+- Someone asked Urushi directly to speak (DIRECT_REQUEST). Always true — this is handled before you are consulted.
 
 # Weak reasons — these are NOT sufficient. Answer false.
 - You have a nicer way to phrase what someone said
@@ -418,11 +432,13 @@ Say your piece now.`
     body: JSON.stringify({
       model: OPENAI_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      // Deliberately small — Urushi should be speaking one or two sentences, not
-      // a paragraph. This is a hard backstop, not the primary length control:
-      // the prompt asks for brevity, but models don't reliably self-limit, so
-      // the cap plus the sentence-trim below enforce it regardless.
-      ...completionParams(OPENAI_MODEL, 90, 0.6),
+      // Small, but no longer 90. At 90 tokens there was no room for a clause of
+      // acknowledgement before the point — every intervention, in every
+      // personality, was forced to be a bare thrust. A manager in a live session
+      // offered a bonus and to work the weekend himself, and the Diplomat had no
+      // budget to register either. 150 fits "you've offered X — does that change
+      // things for you?" and still trims to three sentences below.
+      ...completionParams(OPENAI_MODEL, 150, 0.6),
     }),
   })
 

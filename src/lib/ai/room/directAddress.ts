@@ -66,6 +66,21 @@ const INVITATION_PATTERNS: RegExp[] = [
   /\bare you (there|listening|following)\b/i,
   /\bdo you have\b/i,
 
+  // Forms from live meetings that the list above missed. "Urushi, do you want
+  // to summarise what we discussed?" was said in a real session and refused,
+  // because nothing here matched "do you want to" or "summarise". Being named
+  // is still required, so "could you" and "go ahead" are safe: they only fire
+  // when the sentence also contains Urushi's name.
+  /\b(summari[sz]e|recap|sum up)\b/i,
+  /\bconfirm what\b/i,
+  /\bwhat (was|did we|have we|has been) agree/i,
+  /\bwhat('?s| is| was) (been )?agreed\b/i,
+  /\bdo you want to\b/i,
+  /\b(could|would) you\b/i,
+  /\bgo ahead\b/i,
+  /\byour turn\b/i,
+  /\bwhat did you (hear|get|understand|take)\b/i,
+
   // Hindi, Devanagari.
   /आप\s*क्या\s*(कहते|कहती|सोचते|सोचती|बोलते|बोलती)/,
   // "आपको क्या लगता है" — how it actually gets asked out loud, and the form this

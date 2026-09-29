@@ -73,6 +73,8 @@ export type MeetingProviderEventType =
   | 'participant_joined'
   | 'participant_left'
   | 'transcript_segment'
+  // A participant started or stopped talking. Carries `speaking` and `participant`.
+  | 'participant_speaking'
   | 'speaker_identified'
   | 'meeting_ended'
   | 'bot_removed'
@@ -95,6 +97,8 @@ export interface NormalizedProviderEvent {
   occurredAt: string
   transcriptSegment?: NormalizedTranscriptSegment
   participant?: MeetingParticipantInfo
+  /** For participant_speaking: true on speech_on, false on speech_off. */
+  speaking?: boolean
   errorMessage?: string
   raw: Record<string, unknown>
 }

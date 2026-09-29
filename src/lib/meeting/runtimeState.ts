@@ -34,12 +34,27 @@ export interface RuntimeState {
   escalationLevel: number
   urushiLastSpokeAt?: number
   recentInterventions: RecentIntervention[]
+  /**
+   * Participants the provider reports as speaking right now:
+   * providerParticipantId -> epoch ms of their speech_on.
+   *
+   * This is what lets Urushi not talk over people. In two live sessions every
+   * one of its eight interventions began while a human had already started —
+   * Recall delivers a finished transcript ~13s after the words were said and
+   * our own decision adds 7-16s, so by the time audio was ready the floor had
+   * long since moved. Nothing checked. Recall's speech_on/speech_off events were
+   * subscribed and thrown away.
+   */
+  speakingNow?: Record<string, number>
+  /** Epoch ms of the last partial transcript: someone was mid-sentence then. */
+  lastPartialAt?: number
   /** Epoch ms of the first observed utterance — used for budget-per-10-min. */
   startedAt?: number
   lastUtteranceAt?: number
 }
 
 export const EMPTY_RUNTIME_STATE: RuntimeState = {
+  speakingNow: {},
   wordsBySpeaker: {},
   interruptionCounts: {},
   unansweredQuestions: [],
@@ -263,4 +278,39 @@ export function interventionsInLast10Min(state: RuntimeState, now: number = Date
 export function secondsSinceUrushiSpoke(state: RuntimeState, now: number = Date.now()): number {
   if (state.urushiLastSpokeAt === undefined) return Number.POSITIVE_INFINITY
   return (now - state.urushiLastSpokeAt) / 1000
+}
+
+/** A speech_on with no speech_off after this long is treated as a missed event. */
+const STALE_SPEECH_ON_MS = 45_000
+/** A partial transcript this recent means someone is still mid-sentence. */
+const PARTIAL_IS_LIVE_MS = 4_000
+
+export function markSpeaking(
+  state: RuntimeState,
+  providerParticipantId: string,
+  speaking: boolean,
+  at: number
+): RuntimeState {
+  const speakingNow = { ...(state.speakingNow ?? {}) }
+  if (speaking) speakingNow[providerParticipantId] = at
+  else delete speakingNow[providerParticipantId]
+  return { ...state, speakingNow }
+}
+
+export function markPartial(state: RuntimeState, at: number): RuntimeState {
+  return { ...state, lastPartialAt: at }
+}
+
+/**
+ * Whether a human is talking right now, as far as we can tell.
+ *
+ * Two signals, either sufficient: a speech_on without a matching speech_off, or
+ * a partial transcript within the last few seconds. A speech_on old enough to
+ * be a missed speech_off is ignored, otherwise one dropped event would mute
+ * Urushi for the rest of the meeting.
+ */
+export function isFloorOccupied(state: RuntimeState, now: number): boolean {
+  const live = Object.values(state.speakingNow ?? {}).some((at) => now - at < STALE_SPEECH_ON_MS)
+  const midSentence = state.lastPartialAt !== undefined && now - state.lastPartialAt < PARTIAL_IS_LIVE_MS
+  return live || midSentence
 }

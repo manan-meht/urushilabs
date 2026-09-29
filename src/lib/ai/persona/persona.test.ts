@@ -407,3 +407,23 @@ describe('an English conversation gets no Hindi profanity at all', () => {
     }
   })
 })
+
+describe('the Diplomat notices when someone gives ground', () => {
+  it('is told to name a concession before making any point of its own', () => {
+    // In a live Diplomat session a manager offered a bonus and to work the
+    // weekend himself, and got nothing back but the next point against him.
+    // Nothing in the module said to register a concession; its list was
+    // entirely analytical and it actively warned against validation.
+    const prompt = buildMediatorPersona(settings({ personality: 'diplomat' }))
+    expect(prompt).toContain('When someone gives ground, say so before anything else')
+    expect(prompt).toContain('Do not stack your own point on top of someone\'s concession')
+  })
+
+  it('keeps the distinction from reflexive validation explicit', () => {
+    // The module still forbids "that sounds really hard" after every turn. The
+    // new rule must not read as permission for that.
+    const prompt = buildMediatorPersona(settings({ personality: 'diplomat' }))
+    expect(prompt).toContain('This is not the reflexive validation warned against below')
+    expect(prompt).toContain('Do not respond to every statement with validation')
+  })
+})

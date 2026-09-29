@@ -43,6 +43,8 @@ import {
   recordIntervention,
   updateRuntimeState,
   type RuntimeState,
+  isFloorOccupied,
+  parseRuntimeState as parseRuntimeStateForFloor,
 } from '@/lib/meeting/runtimeState'
 import { isTrivialUtterance } from '@/lib/ai/meeting/interventionGuardrails'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS, recordMeetingUsage } from '@/lib/analytics/meetingEvents'
@@ -338,6 +340,25 @@ async function runMediationController(
     return
   }
 
+  // Say you are coming in BEFORE you come in.
+  //
+  // From this point to audible speech is Stage B, TTS synthesis and delivery —
+  // ten seconds or more, on top of the ~13s Recall already took to hand us the
+  // transcript. A chat line now gives the room a cue to yield that the audio
+  // alone arrives far too late to give. Best-effort: a failed cue must never
+  // stop the intervention itself.
+  try {
+    const cueProvider = getMeetingBotProvider()
+    if (cueProvider.isConfigured() && session.provider_bot_id) {
+      await cueProvider.sendChatMessage({
+        providerBotId: session.provider_bot_id,
+        message: "Urushi: I'd like to come in on that.",
+      })
+    }
+  } catch (err) {
+    console.warn('[meeting pipeline] could not send about-to-speak cue:', err instanceof Error ? err.message : err)
+  }
+
   // ── Stage B: what does Urushi actually say? ────────────────────────────────
   let spokenText: string
   try {
@@ -410,6 +431,39 @@ async function runMediationController(
   await speakInMeeting(session, spokenText, settings)
 }
 
+
+/**
+ * Records something Urushi said as an assistant segment.
+ *
+ * Every spoken line must go through here or the inline insert in
+ * runMediationController, because isEchoOfUrushi compares incoming transcript
+ * against the last few assistant segments. The introduction was spoken without
+ * being recorded, so when Recall transcribed Urushi's own audio back, nothing
+ * matched and it was ingested as a participant called "Unknown" — feeding the
+ * engine its own opening line.
+ */
+export async function recordAssistantSegment(
+  db: ServiceClient,
+  session: Pick<DbMeetingSession, 'id' | 'case_id'>,
+  content: string
+): Promise<void> {
+  const { count } = await db
+    .from('meeting_transcript_segments')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', session.id)
+
+  await db.from('meeting_transcript_segments').insert({
+    session_id: session.id,
+    case_id: session.case_id,
+    participant_id: null,
+    provider_participant_id: null,
+    speaker_name: 'Urushi',
+    role: 'assistant',
+    content,
+    sequence_number: (count ?? 0) + 1,
+  })
+}
+
 /**
  * Bridges the engine's InterventionReason vocabulary onto the meeting_interventions
  * action enum, which predates the engine and is still used by reporting.
@@ -436,6 +490,10 @@ function interventionReasonToAction(reason: InterventionReason): MeetingInterven
       return 'CLARIFY'
     case 'HIDDEN_AGREEMENT':
       return 'PROPOSE_COMPROMISE'
+    case 'UNACKNOWLEDGED_CONCESSION':
+      return 'REFRAME'
+    case 'DIRECT_REQUEST':
+      return 'CLARIFY'
     case 'DECISION_READY':
       return 'CONFIRM_AGREEMENT'
     case 'NEXT_STEP_NEEDED':
@@ -509,6 +567,21 @@ export async function speakInMeeting(
   )
   const voiceProfile = getVoiceProfile(resolved)
 
+  // Do not play audio over a human. Recall's speech_on/off and partial
+  // transcripts keep runtime_state.speakingNow current; poll it for a short
+  // window and only speak into a clear floor. If it never clears, the words
+  // still land as a chat message — heard, not shouted over someone.
+  const floorClear = await waitForClearFloor(session.id)
+  if (!floorClear) {
+    console.warn('[meeting pipeline] floor never cleared; delivering as chat only')
+    try {
+      await provider.sendChatMessage({ providerBotId: session.provider_bot_id, message: spokenText })
+    } catch (err) {
+      console.error('[meeting pipeline] failed to deliver intervention as chat:', err)
+    }
+    return
+  }
+
   try {
     const audio = await synthesizeSpeech(spokenText, {
       voice: voiceProfile.voice,
@@ -527,5 +600,28 @@ export async function speakInMeeting(
     await provider.sendChatMessage({ providerBotId: session.provider_bot_id, message: spokenText })
   } catch (err) {
     console.error('[meeting pipeline] failed to deliver intervention:', err)
+  }
+}
+
+/** How long to wait for a gap before giving up and using chat. */
+const FLOOR_WAIT_MS = 12_000
+const FLOOR_POLL_MS = 1_500
+
+/**
+ * Re-reads runtime_state until nobody is speaking or the wait runs out.
+ *
+ * Re-read on every poll rather than trusting the session row this function was
+ * handed: that row is a snapshot from before two model calls and TTS, and the
+ * whole point is that the floor moves in that time.
+ */
+async function waitForClearFloor(sessionId: string): Promise<boolean> {
+  const db = getServiceClient()
+  const deadline = Date.now() + FLOOR_WAIT_MS
+  for (;;) {
+    const { data } = await db.from('meeting_sessions').select('runtime_state').eq('id', sessionId).maybeSingle()
+    const state = parseRuntimeStateForFloor((data as { runtime_state?: unknown } | null)?.runtime_state)
+    if (!isFloorOccupied(state, Date.now())) return true
+    if (Date.now() >= deadline) return false
+    await new Promise((r) => setTimeout(r, FLOOR_POLL_MS))
   }
 }

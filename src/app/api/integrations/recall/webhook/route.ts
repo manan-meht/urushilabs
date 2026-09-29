@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/db/client'
 import { getMeetingBotProvider } from '@/lib/meeting/providerFactory'
-import { ingestMeetingTranscriptSegment, speakInMeeting, MEETING_INTRODUCTION } from '@/lib/meeting/pipeline'
+import { ingestMeetingTranscriptSegment, speakInMeeting, recordAssistantSegment, MEETING_INTRODUCTION } from '@/lib/meeting/pipeline'
+import { parseRuntimeState, markSpeaking, markPartial } from '@/lib/meeting/runtimeState'
 import { completeMeetingSession } from '@/lib/meeting/completeSession'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS } from '@/lib/analytics/meetingEvents'
@@ -132,6 +133,11 @@ async function processEvent(db: ReturnType<typeof getServiceClient>, event: Norm
         if (transitioned && transitioned.length > 0) {
           await trackMeetingEvent(db, { caseId: meetingSession.case_id, event: MEETING_ANALYTICS_EVENTS.BOT_JOINED })
           await trackMeetingEvent(db, { caseId: meetingSession.case_id, event: MEETING_ANALYTICS_EVENTS.STARTED })
+          // Recorded BEFORE it is spoken, so that when Recall transcribes
+          // Urushi's own audio back, isEchoOfUrushi has something to match. Left
+          // unrecorded, the introduction was ingested as a participant called
+          // "Unknown" in a live session and fed to the engine as testimony.
+          await recordAssistantSegment(db, meetingSession, MEETING_INTRODUCTION)
           await speakInMeeting(meetingSession, MEETING_INTRODUCTION)
         }
         break
@@ -161,6 +167,28 @@ async function processEvent(db: ReturnType<typeof getServiceClient>, event: Norm
       case 'participant_left':
         await trackMeetingEvent(db, { caseId: meetingSession.case_id, event: MEETING_ANALYTICS_EVENTS.BOT_DISCONNECTED, metadata: { participant: true } })
         break
+
+      case 'participant_speaking': {
+        // Keeps runtime_state.speakingNow current so speakInMeeting can wait
+        // for a clear floor. Read-modify-write on a JSON column: two speech
+        // events landing in the same instant can lose one update. Tolerable
+        // here — a lost speech_off is bounded by the staleness cutoff in
+        // isFloorOccupied, and a lost speech_on costs one possible overlap
+        // rather than muting anyone.
+        if (event.participant) {
+          const at = Date.parse(event.occurredAt) || Date.now()
+          const before = parseRuntimeState((meetingSession as unknown as { runtime_state?: unknown }).runtime_state)
+          const speaking = event.speaking === true
+          let after = markSpeaking(before, event.participant.providerParticipantId, speaking, at)
+          // A partial transcript arrives as speaking:true; it also marks the
+          // moment, so a gap in speech_on/off coverage still reads as occupied.
+          if (speaking && (event.raw as { event?: string })?.event === 'transcript.partial_data') {
+            after = markPartial(after, at)
+          }
+          await db.from('meeting_sessions').update({ runtime_state: after }).eq('id', meetingSession.id)
+        }
+        break
+      }
 
       case 'transcript_segment':
         if (event.transcriptSegment) {

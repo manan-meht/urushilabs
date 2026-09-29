@@ -239,6 +239,12 @@ export type InterventionReason =
   | 'NEXT_STEP_NEEDED'
   | 'VAGUENESS'
   | 'UNSUPPORTED_CLAIM'
+  // Someone addressed Urushi by name and asked it to speak. Bypasses cooldown
+  // and budget: in two live sessions seven such requests were dropped silently.
+  | 'DIRECT_REQUEST'
+  // Someone gave real ground and the other person has not registered it. The
+  // Diplomat's reason to speak, and the one the list was missing entirely.
+  | 'UNACKNOWLEDGED_CONCESSION'
 
 export const INTERVENTION_REASONS: readonly InterventionReason[] = [
   'CIRCULAR_DISCUSSION', 'UNANSWERED_QUESTION', 'CONTRADICTION', 'DOMINATING_PARTICIPANT',

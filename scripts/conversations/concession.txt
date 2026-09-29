@@ -1,0 +1,20 @@
+# The Diplomat complaint from a live Meet session: the manager offered a bonus
+# and to work the weekend himself, and got nothing back but the next point
+# against him. The pause after each offer is the moment a Diplomat should use.
+#
+# topic: A Monday report and who gives up their weekend for it
+# context: Vikram manages Priya. Friday evening. The client report is due Monday 9am and cannot be finished today. Priya's contract gives her weekends off.
+
+Vikram: Priya, I need the report Monday morning. I know that means the weekend.
+Priya: My contract says weekends are off. I'm not being difficult, that's what I signed.
+[pause 7]
+
+Vikram: You're right, and I should have planned this better. Here's what I'll do: I'll take the analysis section myself on Saturday, and there's a bonus in it for you either way.
+[pause 8]
+
+Priya: That's still my Sunday gone. And what about next time?
+Vikram: Next time I'll set a data cutoff and if it slips, the deadline moves, not your weekend. I'll put that in writing Monday.
+[pause 8]
+
+Priya: Fine. I'll do the Sunday if you're actually taking Saturday.
+[pause 7]
