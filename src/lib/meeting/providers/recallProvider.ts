@@ -57,6 +57,7 @@ import type {
   SendAudioParams,
   SendChatMessageParams,
   WebhookVerificationInput,
+  StartOutputMediaParams,
 } from '../provider'
 import { MeetingProviderNotConfiguredError } from '../provider'
 
@@ -215,6 +216,26 @@ export class RecallMeetingBotProvider implements MeetingBotProvider {
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`Recall sendAudio failed (${res.status}): ${text}`)
+    }
+  }
+
+  async startOutputMedia(params: StartOutputMediaParams): Promise<void> {
+    this.assertConfigured()
+
+    // Body shape read from Recall's OpenAPI schema, not from the docs prose. The
+    // rendered reference reads "camera webpage OutputMediaWebpageRequest", which
+    // suggests { camera: { webpage: { url } } }. The schema says otherwise:
+    // OutputMediaRequest.camera is a discriminated OutputMediaConfigRequest with
+    // kind: 'webpage' and config: { url }. Guessing the first shape would have
+    // failed with a 400 on the bot's first admission, in a live call, silently.
+    const res = await fetch(`${this.baseUrl()}/bot/${params.providerBotId}/output_media/`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ camera: { kind: 'webpage', config: { url: params.url } } }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Recall startOutputMedia failed (${res.status}): ${text}`)
     }
   }
 

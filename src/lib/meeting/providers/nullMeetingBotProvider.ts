@@ -16,6 +16,7 @@ import type {
   SendAudioParams,
   SendChatMessageParams,
   WebhookVerificationInput,
+  StartOutputMediaParams,
 } from '../provider'
 import { MeetingProviderNotConfiguredError } from '../provider'
 
@@ -39,6 +40,10 @@ export class NullMeetingBotProvider implements MeetingBotProvider {
   }
 
   async leaveMeeting(_providerBotId: string): Promise<void> {
+    throw new MeetingProviderNotConfiguredError('Recall')
+  }
+
+  async startOutputMedia(_params: StartOutputMediaParams): Promise<void> {
     throw new MeetingProviderNotConfiguredError('Recall')
   }
 

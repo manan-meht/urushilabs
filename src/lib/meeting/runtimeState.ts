@@ -48,6 +48,13 @@ export interface RuntimeState {
   speakingNow?: Record<string, number>
   /** Epoch ms of the last partial transcript: someone was mid-sentence then. */
   lastPartialAt?: number
+  /**
+   * What the bot's camera tile shows. Flipped to 'thinking' the instant Stage A
+   * approves — ten-plus seconds before any audio — so the room gets a cue to
+   * yield that the voice alone arrives too late to give.
+   */
+  botStatus?: 'listening' | 'thinking' | 'speaking'
+  botStatusAt?: number
   /** Epoch ms of the first observed utterance — used for budget-per-10-min. */
   startedAt?: number
   lastUtteranceAt?: number
@@ -313,4 +320,12 @@ export function isFloorOccupied(state: RuntimeState, now: number): boolean {
   const live = Object.values(state.speakingNow ?? {}).some((at) => now - at < STALE_SPEECH_ON_MS)
   const midSentence = state.lastPartialAt !== undefined && now - state.lastPartialAt < PARTIAL_IS_LIVE_MS
   return live || midSentence
+}
+
+export function setBotStatus(
+  state: RuntimeState,
+  status: NonNullable<RuntimeState['botStatus']>,
+  at: number
+): RuntimeState {
+  return { ...state, botStatus: status, botStatusAt: at }
 }

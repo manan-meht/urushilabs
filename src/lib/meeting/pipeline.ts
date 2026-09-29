@@ -44,6 +44,7 @@ import {
   updateRuntimeState,
   type RuntimeState,
   isFloorOccupied,
+  setBotStatus,
   parseRuntimeState as parseRuntimeStateForFloor,
 } from '@/lib/meeting/runtimeState'
 import { isTrivialUtterance } from '@/lib/ai/meeting/interventionGuardrails'
@@ -347,6 +348,9 @@ async function runMediationController(
   // transcript. A chat line now gives the room a cue to yield that the audio
   // alone arrives far too late to give. Best-effort: a failed cue must never
   // stop the intervention itself.
+  // The camera tile flips first; it is what people are actually looking at.
+  await writeBotStatus(db, session.id, 'thinking')
+
   try {
     const cueProvider = getMeetingBotProvider()
     if (cueProvider.isConfigured() && session.provider_bot_id) {
@@ -571,6 +575,7 @@ export async function speakInMeeting(
   // transcripts keep runtime_state.speakingNow current; poll it for a short
   // window and only speak into a clear floor. If it never clears, the words
   // still land as a chat message — heard, not shouted over someone.
+  const db = getServiceClient()
   const floorClear = await waitForClearFloor(session.id)
   if (!floorClear) {
     console.warn('[meeting pipeline] floor never cleared; delivering as chat only')
@@ -579,8 +584,11 @@ export async function speakInMeeting(
     } catch (err) {
       console.error('[meeting pipeline] failed to deliver intervention as chat:', err)
     }
+    await writeBotStatus(db, session.id, 'listening')
     return
   }
+
+  await writeBotStatus(db, session.id, 'speaking')
 
   try {
     const audio = await synthesizeSpeech(spokenText, {
@@ -600,6 +608,33 @@ export async function speakInMeeting(
     await provider.sendChatMessage({ providerBotId: session.provider_bot_id, message: spokenText })
   } catch (err) {
     console.error('[meeting pipeline] failed to deliver intervention:', err)
+  }
+
+  await writeBotStatus(db, session.id, 'listening')
+}
+
+/**
+ * Sets what the camera tile shows, immediately.
+ *
+ * Reads and rewrites runtime_state rather than going through the in-memory
+ * `state` the controller carries, because that is persisted only at the end of
+ * a turn and the whole point is that the tile changes NOW, before Stage B, TTS
+ * and delivery. Read-modify-write on a JSON column can lose a concurrent
+ * speech_on/off update; a lost status flip is the smaller harm and is corrected
+ * by the next one.
+ */
+async function writeBotStatus(
+  db: ServiceClient,
+  sessionId: string,
+  status: 'listening' | 'thinking' | 'speaking'
+): Promise<void> {
+  try {
+    const { data } = await db.from('meeting_sessions').select('runtime_state').eq('id', sessionId).maybeSingle()
+    const current = parseRuntimeStateForFloor((data as { runtime_state?: unknown } | null)?.runtime_state)
+    await db.from('meeting_sessions').update({ runtime_state: setBotStatus(current, status, Date.now()) }).eq('id', sessionId)
+  } catch (err) {
+    // The tile is a courtesy; a failure to update it must never stop Urushi speaking.
+    console.warn('[meeting pipeline] could not update bot status tile:', err instanceof Error ? err.message : err)
   }
 }
 

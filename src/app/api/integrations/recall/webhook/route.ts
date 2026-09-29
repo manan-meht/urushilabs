@@ -3,6 +3,7 @@ import { getServiceClient } from '@/lib/db/client'
 import { getMeetingBotProvider } from '@/lib/meeting/providerFactory'
 import { ingestMeetingTranscriptSegment, speakInMeeting, recordAssistantSegment, MEETING_INTRODUCTION } from '@/lib/meeting/pipeline'
 import { parseRuntimeState, markSpeaking, markPartial } from '@/lib/meeting/runtimeState'
+import { statusTileUrl } from '@/lib/meeting/statusTile'
 import { completeMeetingSession } from '@/lib/meeting/completeSession'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS } from '@/lib/analytics/meetingEvents'
@@ -138,6 +139,21 @@ async function processEvent(db: ReturnType<typeof getServiceClient>, event: Norm
           // unrecorded, the introduction was ingested as a participant called
           // "Unknown" in a live session and fed to the engine as testimony.
           await recordAssistantSegment(db, meetingSession, MEETING_INTRODUCTION)
+
+          // Put the status screen in the camera tile before the first word.
+          // Best-effort: if output_media is unavailable the meeting still runs,
+          // it just runs without a visible "about to speak" cue.
+          if (meetingSession.provider_bot_id) {
+            try {
+              await getMeetingBotProvider().startOutputMedia({
+                providerBotId: meetingSession.provider_bot_id,
+                url: statusTileUrl(meetingSession.id),
+              })
+            } catch (err) {
+              console.warn('[recall webhook] could not start status tile:', err instanceof Error ? err.message : err)
+            }
+          }
+
           await speakInMeeting(meetingSession, MEETING_INTRODUCTION)
         }
         break

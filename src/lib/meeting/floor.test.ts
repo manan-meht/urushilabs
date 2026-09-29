@@ -40,3 +40,14 @@ describe('who has the floor', () => {
     expect(isFloorOccupied(markSpeaking(legacy, '1', true, t0), t0 + 1)).toBe(true)
   })
 })
+
+describe('bot status on the tile', () => {
+  it('records the state and when it changed', async () => {
+    const { setBotStatus } = await import('./runtimeState')
+    const s = setBotStatus(EMPTY_RUNTIME_STATE, 'thinking', t0)
+    expect(s.botStatus).toBe('thinking')
+    expect(s.botStatusAt).toBe(t0)
+    // Flipping status must not disturb the floor tracking it shares a row with.
+    expect(isFloorOccupied(s, t0)).toBe(false)
+  })
+})

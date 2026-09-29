@@ -51,6 +51,12 @@ export interface SendAudioParams {
   mimeType: string
 }
 
+export interface StartOutputMediaParams {
+  providerBotId: string
+  /** Publicly loadable URL; the bot's browser fetches it with no credentials of ours. */
+  url: string
+}
+
 export interface SendChatMessageParams {
   providerBotId: string
   message: string
@@ -124,6 +130,11 @@ export interface MeetingBotProvider {
   getBotStatus(providerBotId: string): Promise<BotStatusResult>
   sendAudio(params: SendAudioParams): Promise<void>
   sendChatMessage(params: SendChatMessageParams): Promise<void>
+  /**
+   * Streams a live webpage into the bot's camera tile. Used for the status
+   * screen (listening / thinking / speaking) — see lib/meeting/statusTile.ts.
+   */
+  startOutputMedia(params: StartOutputMediaParams): Promise<void>
   getParticipants(providerBotId: string): Promise<MeetingParticipantInfo[]>
 
   /** Verifies webhook authenticity per the provider's documented signing mechanism. */
