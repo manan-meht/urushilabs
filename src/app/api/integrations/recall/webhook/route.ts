@@ -84,11 +84,20 @@ export async function POST(req: NextRequest) {
   const events = provider.handleWebhook(rawBody)
   const db = getServiceClient()
 
-  for (const event of events) {
-    await processEvent(db, event)
-  }
+  // Acknowledge first, process after. Recall delivers a bot's realtime events
+  // one at a time and waits for each response; with streaming transcription
+  // that is around two events a second, and even our fast path — four
+  // database round trips — took longer than the gap between them. The backlog
+  // grew by about a third of a second every second: a session's transcript was
+  // 82 s behind at minute five and 128 s behind at minute seven. Nothing here
+  // is worth making Recall wait for.
+  await runInBackground('events', (async () => {
+    for (const event of events) {
+      await processEvent(db, event)
+    }
+  })())
 
-  return NextResponse.json({ ok: true, processed: events.length })
+  return NextResponse.json({ ok: true, accepted: events.length })
 }
 
 async function processEvent(db: ReturnType<typeof getServiceClient>, event: NormalizedProviderEvent): Promise<void> {
