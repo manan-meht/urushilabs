@@ -154,7 +154,7 @@ const INTERVENTION_MODULES: Record<InterventionLevel, string> = {
 
 // ─── Intervention style (how to enter) ────────────────────────────────────────
 
-const STYLE_MODULES: Record<InterventionStyle, string> = {
+export const STYLE_MODULES: Record<InterventionStyle, string> = {
   NATURAL: `# How to enter
 The speaker has finished. Enter directly, without preamble and without asking permission.
 Example shape: "Before we move on, there's something I want to clarify."`,
@@ -167,7 +167,7 @@ Example shape: "Stop. I'm stepping in here." or "Hold on. We're not going to get
 Then say concretely what happens next — typically who speaks, uninterrupted, and who responds after.`,
 }
 
-const REASON_GUIDANCE: Record<InterventionReason, string> = {
+export const REASON_GUIDANCE: Record<InterventionReason, string> = {
   CIRCULAR_DISCUSSION: 'The conversation is repeating itself. Name the loop and break it by identifying what is actually unresolved.',
   UNANSWERED_QUESTION: 'A direct question was asked and not answered. Get the answer before the conversation moves on.',
   CONTRADICTION: 'Someone has contradicted a position they took earlier. Name the specific contradiction, without hostility.',
@@ -280,7 +280,7 @@ ${languageReminder(language, intervention.detectedLanguage)}`
  * testing (0/6 → 4/6 correct switches before this, higher after). Keep this in
  * sync with LANGUAGE_MODULES above.
  */
-function languageReminder(language: AgentLanguage, detected?: DetectedLanguage): string {
+export function languageReminder(language: AgentLanguage, detected?: DetectedLanguage): string {
   switch (language) {
     case 'hindi':
       return 'Language check: reply in conversational Hindi, not English.'

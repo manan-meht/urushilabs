@@ -44,3 +44,10 @@ describe('wasTruncated', () => {
     expect(wasTruncated(undefined)).toBe(false)
   })
 })
+
+describe('reasoning effort', () => {
+  it('passes reasoning_effort only to reasoning models', () => {
+    expect(completionParams('gpt-6-luna', 200, 0.4, { reasoningEffort: 'low' })).toEqual({ max_completion_tokens: 1500, reasoning_effort: 'low' })
+    expect(completionParams('gpt-4o', 200, 0.4, { reasoningEffort: 'low' })).toEqual({ max_tokens: 200, temperature: 0.4 })
+  })
+})

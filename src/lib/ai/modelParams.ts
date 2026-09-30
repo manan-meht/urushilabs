@@ -32,7 +32,17 @@ export interface CompletionParams {
   max_tokens?: number
   max_completion_tokens?: number
   temperature?: number
+  reasoning_effort?: ReasoningEffort
 }
+
+/**
+ * How long a reasoning model may think. Restricted to the values the OpenAI SDK
+ * type also allows, because several call sites spread this into the SDK client;
+ * gpt-6-luna itself accepts none/low/medium/high and rejects 'minimal'. Measured on a Stage-A-sized call: default 3.2-4.1 s,
+ * low 2.3-3.2 s, none 2.4 s, with the reasoning itself only 35-55 tokens — the
+ * floor is the model's own latency, but the setting still buys a second.
+ */
+export type ReasoningEffort = 'low' | 'medium' | 'high'
 
 /**
  * The token-limit and sampling parameters this model will accept.
@@ -51,10 +61,14 @@ export interface CompletionParams {
 export function completionParams(
   model: string,
   maxOutputTokens: number,
-  temperature?: number
+  temperature?: number,
+  opts: { reasoningEffort?: ReasoningEffort } = {}
 ): CompletionParams {
   if (isReasoningFamily(model)) {
-    return { max_completion_tokens: Math.max(maxOutputTokens * 6, 1500) }
+    return {
+      max_completion_tokens: Math.max(maxOutputTokens * 6, 1500),
+      ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+    }
   }
   return {
     max_tokens: maxOutputTokens,

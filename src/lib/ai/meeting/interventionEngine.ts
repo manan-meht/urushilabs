@@ -44,7 +44,7 @@ import {
 } from '@/lib/meeting/runtimeState'
 import { isTrivialUtterance } from './interventionGuardrails'
 import { overrideThresholdMultiplier, type OverrideState } from './overrideCommands'
-import { buildMeetingSystemPrompt } from './personaPrompt'
+import { buildMeetingSystemPrompt, REASON_GUIDANCE, STYLE_MODULES, languageReminder } from './personaPrompt'
 import { detectRoomLanguage } from './languageDetection'
 import { detectDirectAddress } from '@/lib/ai/room/directAddress'
 import { completionParams } from '@/lib/ai/modelParams'
@@ -178,6 +178,198 @@ export function preGate(ctx: EngineContext): PreGateResult {
   return { proceed: true }
 }
 
+
+function describeSignals(ctx: EngineContext): string {
+  const dominance = dominanceSignal(ctx.state)
+  return [
+    `Repetition score: ${ctx.state.circularityScore.toFixed(2)} (0 = fresh ground, 1 = going in circles)`,
+    `Escalation level: ${ctx.state.escalationLevel.toFixed(2)} (0 = calm, 1 = heated)`,
+    dominance ? `Floor share: ${dominance.speaker} has ${Math.round(dominance.share * 100)}% of words spoken` : null,
+    ctx.state.unansweredQuestions.length > 0
+      ? `Open questions: ${ctx.state.unansweredQuestions.map((q) => `${q.askedBy} asked "${q.text}"`).join(' | ')}`
+      : null,
+    Object.entries(ctx.state.interruptionCounts).length > 0
+      ? `Cut-offs: ${Object.entries(ctx.state.interruptionCounts).map(([s, n]) => `${s} x${n}`).join(', ')}`
+      : null,
+    ctx.state.recentInterventions.length > 0
+      ? `Urushi's recent interventions: ${ctx.state.recentInterventions.map((i) => i.reason).join(', ')} — do not repeat the same move`
+      : 'Urushi has not spoken yet',
+  ].filter(Boolean).join('\n')
+}
+
+/**
+ * Private pre-meeting perspectives, if any. Always hypotheses, never to be
+ * quoted or attributed aloud; the wording differs slightly between the
+ * decision and speech prompts because the speech prompt is what talks.
+ */
+function describePerspectives(ctx: EngineContext, purpose: 'decision' | 'speech'): string {
+  if (!ctx.perspectives?.length) return ''
+  const lines = ctx.perspectives.map((p) => `${p.participantName}: ${p.perspective}`).join('\n')
+  return purpose === 'speech'
+    ? `\nPrivate pre-meeting perspectives (hypotheses — never quote or attribute these aloud; reframe neutrally):\n${lines}\n`
+    : `\nPrivate pre-meeting perspectives (hypotheses only — weigh them, never quote them):\n${lines}\n`
+}
+
+function transcriptBlock(ctx: EngineContext): string {
+  return `Conversation so far (oldest first):
+${ctx.recentTranscript.map((t) => `${t.speaker}: ${t.text}`).join('\n') || '(nothing yet)'}
+
+Just said:
+${ctx.latestUtterance.speaker}: ${ctx.latestUtterance.text}`
+}
+
+// ─── Single call: decide AND compose ─────────────────────────────────────────
+
+export interface ComposedDecision {
+  decision: InterventionDecision
+  /** Present when decision.shouldIntervene. Cleaned and capped to two sentences. */
+  spokenText?: string
+}
+
+/**
+ * The full persona, the decision criteria, and the per-reason speaking
+ * guidance in one prompt, answered with one JSON object that carries both the
+ * verdict and the line.
+ */
+export function buildComposePrompt(ctx: EngineContext, forcedReason?: InterventionReason): { system: string; user: string } {
+  const language = effectiveLanguage(ctx.settings)
+  const detectedLanguage = language === 'auto'
+    ? detectRoomLanguage(ctx.latestUtterance.text, ctx.recentTranscript.map((t) => t.text))
+    : undefined
+
+  const persona = buildMeetingSystemPrompt({
+    settings: ctx.settings,
+    meetingContext: {
+      topic: ctx.topic,
+      participantNames: ctx.participantNames,
+      ...(ctx.contextSummary ? { contextSummary: ctx.contextSummary } : {}),
+    },
+  })
+
+  const guidance = (Object.keys(REASON_GUIDANCE) as InterventionReason[])
+    .map((r) => `- ${r}: ${REASON_GUIDANCE[r]}`)
+    .join('\n')
+
+  const decisionSection = forcedReason
+    ? `# You are speaking now
+The reason is ${forcedReason}: ${REASON_GUIDANCE[forcedReason]}
+This is decided; shouldIntervene must be true. Your job is the line itself.`
+    : `# Decide, then speak — one step
+Decide whether speaking RIGHT NOW would materially improve this conversation, and if it would, write what you say. Two things at once, but the judgement comes first: participants talking productively to each other is the desired state, not a gap to fill. Knowing when silence is better is the valuable part.
+
+Participation level: ${ctx.settings.interventionLevel}
+
+${DECISION_CRITERIA}`
+
+  const system = `${persona}
+
+${decisionSection}
+
+# How to speak, by reason
+${guidance}
+
+# Entry style
+${STYLE_MODULES.NATURAL}
+
+${STYLE_MODULES.POLITE_INTERRUPT}
+
+${STYLE_MODULES.HARD_INTERRUPT}
+
+# Output — JSON only, no preamble, no markdown fences
+{
+  "shouldIntervene": boolean,
+  "reason": "<one of the reason codes above, only if shouldIntervene>",
+  "urgency": "LOW" | "MEDIUM" | "HIGH",
+  "style": "NATURAL" | "POLITE_INTERRUPT" | "HARD_INTERRUPT",
+  "confidence": number,
+  "intendedOutcome": "<short phrase: what speaking should achieve>",
+  "spokenText": "<exactly the words you will say out loud, 1-2 sentences, no speaker label — empty string if not speaking>"
+}
+${languageReminder(language, detectedLanguage)}`
+
+  const user = `Topic: ${ctx.topic}
+${ctx.contextSummary ? `Background: ${ctx.contextSummary}\n` : ''}${describePerspectives(ctx, 'speech')}
+${transcriptBlock(ctx)}
+
+Signals:
+${describeSignals(ctx)}
+
+${forcedReason ? 'Write the line.' : 'Should Urushi speak right now? If yes, write the line.'}`
+
+  return { system, user }
+}
+
+/**
+ * One model call instead of two.
+ *
+ * Stage A and Stage B each took 2.3-4 s on gpt-6-luna regardless of reasoning
+ * depth, and ran back to back; with transcription, TTS and delivery on top,
+ * a spoken intervention landed 12-18 s after the words that prompted it. The
+ * room had moved on. Deciding and composing in one call removes a full round
+ * trip. Stage A's neutral-judge framing is kept verbatim inside the prompt;
+ * the persona now reads it alongside the room instead of after a verdict.
+ */
+export async function decideAndCompose(ctx: EngineContext): Promise<ComposedDecision> {
+  const gate = preGate(ctx)
+  if (!gate.proceed) {
+    return { decision: { ...NO_INTERVENTION, suppressedBy: gate.suppressedBy ?? 'threshold' } }
+  }
+
+  const { OPENAI_API_KEY, OPENAI_MODEL, DEMO_MODE } = getEnv()
+  if (DEMO_MODE) return { decision: { ...NO_INTERVENTION, suppressedBy: 'model' } }
+  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.')
+
+  const { system, user } = buildComposePrompt(ctx, gate.forcedReason)
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      response_format: { type: 'json_object' },
+      // Decision fields plus a two-sentence line.
+      ...completionParams(OPENAI_MODEL, 260, 0.4, { reasoningEffort: 'low' }),
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Intervention decide+compose failed (${res.status}): ${await res.text()}`)
+  }
+
+  const data = await res.json() as ChatCompletionResponse
+  reportUsage(ctx, 'decision', OPENAI_MODEL, data)
+  const rawContent = data.choices?.[0]?.message?.content
+  if (!rawContent) throw new Error('Empty decide+compose response.')
+
+  let parsed: RawDecision & { spokenText?: unknown }
+  try {
+    parsed = JSON.parse(rawContent) as RawDecision & { spokenText?: unknown }
+  } catch {
+    throw new Error('Intervention decide+compose returned invalid JSON.')
+  }
+
+  const decision = gate.forcedReason
+    ? applyThresholds({ ...coerceDecision({ ...parsed, shouldIntervene: true, reason: gate.forcedReason }) }, ctx, gate.forcedReason)
+    : applyThresholds(coerceDecision(parsed), ctx)
+
+  if (!decision.shouldIntervene) return { decision }
+
+  let spokenText = typeof parsed.spokenText === 'string' ? cleanSpokenLine(parsed.spokenText) : ''
+  if (!spokenText) {
+    // The model decided to speak and gave no words. Rare; fall back to the
+    // dedicated speech call rather than say nothing or read out JSON.
+    spokenText = await generateInterventionSpeech(ctx, decision)
+  }
+  return { decision, spokenText }
+}
+
+/** Strips wrapping quotes and a stray speaker label, then caps to two sentences. */
+function cleanSpokenLine(text: string): string {
+  const cleaned = text.trim().replace(/^["'`]+|["'`]+$/g, '').replace(/^Urushi:\s*/i, '').trim()
+  return cleaned ? capToSentences(cleaned, 2) : ''
+}
+
 // ─── Stage A: should Urushi speak? ───────────────────────────────────────────
 
 /**
@@ -191,21 +383,12 @@ const PERSONALITY_SUMMARY: Record<MeetingPersonality, string> = {
   deal_maker: 'Deal Maker — practical, pushes trade-offs toward a concrete, specific agreement',
 }
 
-function buildDecisionPrompt(ctx: EngineContext): { system: string; user: string } {
-  const { settings } = ctx
-
-  const system = `You are the intervention controller for Urushi, an AI participant in a live ${ctx.participantNames.length}-person video meeting (${ctx.participantNames.join(', ')}).
-
-# Your only job
-Decide whether speaking RIGHT NOW would materially improve this conversation. You do NOT write what Urushi says — a separate step does that. Judge only whether the floor is worth taking.
-
-This is the hardest judgement in the product. Producing an intervention is easy; knowing when silence is better is the valuable part. Participants talking productively to each other is the desired state, not a gap to fill.
-
-# Urushi's configured role
-Personality: ${PERSONALITY_SUMMARY[settings.personality]}
-Participation level: ${settings.interventionLevel}
-
-# Strong reasons to speak
+/**
+ * What counts as a reason to speak, shared by the two-call path (Stage A) and
+ * the single-call path (decideAndCompose) so the judgement is the same wherever
+ * it is made.
+ */
+const DECISION_CRITERIA = `# Strong reasons to speak
 - The conversation is repeating itself (CIRCULAR_DISCUSSION)
 - A direct question was asked and dodged (UNANSWERED_QUESTION)
 - Someone contradicts a position they took earlier (CONTRADICTION)
@@ -240,7 +423,23 @@ POLITE_INTERRUPT — cut in mid-flow because the conversation is looping, someon
 HARD_INTERRUPT — rare. Only for people talking over each other, shouting, personal attacks, or serious escalation.
 
 # Confidence
-0.0-1.0, how sure you are that speaking now beats staying silent. Be honest and calibrated; a caller applies thresholds to this number. Low confidence is a useful answer.
+0.0-1.0, how sure you are that speaking now beats staying silent. Be honest and calibrated; a caller applies thresholds to this number. Low confidence is a useful answer.`
+
+function buildDecisionPrompt(ctx: EngineContext): { system: string; user: string } {
+  const { settings } = ctx
+
+  const system = `You are the intervention controller for Urushi, an AI participant in a live ${ctx.participantNames.length}-person video meeting (${ctx.participantNames.join(', ')}).
+
+# Your only job
+Decide whether speaking RIGHT NOW would materially improve this conversation. You do NOT write what Urushi says — a separate step does that. Judge only whether the floor is worth taking.
+
+This is the hardest judgement in the product. Producing an intervention is easy; knowing when silence is better is the valuable part. Participants talking productively to each other is the desired state, not a gap to fill.
+
+# Urushi's configured role
+Personality: ${PERSONALITY_SUMMARY[settings.personality]}
+Participation level: ${settings.interventionLevel}
+
+${DECISION_CRITERIA}
 
 # Output — JSON only, no preamble, no markdown fences
 {
@@ -252,25 +451,9 @@ HARD_INTERRUPT — rare. Only for people talking over each other, shouting, pers
   "intendedOutcome": "<short phrase: what speaking should achieve>"
 }`
 
-  const dominance = dominanceSignal(ctx.state)
-  const signals = [
-    `Repetition score: ${ctx.state.circularityScore.toFixed(2)} (0 = fresh ground, 1 = going in circles)`,
-    `Escalation level: ${ctx.state.escalationLevel.toFixed(2)} (0 = calm, 1 = heated)`,
-    dominance ? `Floor share: ${dominance.speaker} has ${Math.round(dominance.share * 100)}% of words spoken` : null,
-    ctx.state.unansweredQuestions.length > 0
-      ? `Open questions: ${ctx.state.unansweredQuestions.map((q) => `${q.askedBy} asked "${q.text}"`).join(' | ')}`
-      : null,
-    Object.entries(ctx.state.interruptionCounts).length > 0
-      ? `Cut-offs: ${Object.entries(ctx.state.interruptionCounts).map(([s, n]) => `${s} x${n}`).join(', ')}`
-      : null,
-    ctx.state.recentInterventions.length > 0
-      ? `Urushi's recent interventions: ${ctx.state.recentInterventions.map((i) => i.reason).join(', ')} — do not repeat the same move`
-      : 'Urushi has not spoken yet',
-  ].filter(Boolean).join('\n')
+  const signals = describeSignals(ctx)
 
-  const perspectives = ctx.perspectives?.length
-    ? `\nPrivate pre-meeting perspectives (hypotheses only — NEVER to be quoted or attributed aloud):\n${ctx.perspectives.map((p) => `${p.participantName}: ${p.perspective}`).join('\n')}\n`
-    : ''
+  const perspectives = describePerspectives(ctx, 'decision')
 
   const user = `Topic: ${ctx.topic}
 ${ctx.contextSummary ? `Background: ${ctx.contextSummary}\n` : ''}${perspectives}
@@ -469,9 +652,7 @@ export async function generateInterventionSpeech(
     },
   })
 
-  const perspectives = ctx.perspectives?.length
-    ? `\nPrivate pre-meeting perspectives (hypotheses — never quote or attribute these aloud; reframe neutrally):\n${ctx.perspectives.map((p) => `${p.participantName}: ${p.perspective}`).join('\n')}\n`
-    : ''
+  const perspectives = describePerspectives(ctx, 'speech')
 
   const movedOn = options.movedOn?.length
     ? `

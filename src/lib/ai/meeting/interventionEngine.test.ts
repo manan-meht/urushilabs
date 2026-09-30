@@ -10,13 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  preGate,
-  applyThresholds,
-  NO_INTERVENTION,
-  type EngineContext,
-  type InterventionDecision,
-} from './interventionEngine'
+import { preGate, applyThresholds, NO_INTERVENTION, type EngineContext, type InterventionDecision, buildComposePrompt } from './interventionEngine'
 import {
   detectOverrideCommand,
   applyOverride,
@@ -713,5 +707,29 @@ describe('Persona prompt composition', () => {
     })
     expect(speaking).toContain('How to enter')
     expect(speaking).toContain('do NOT ask "Can I interrupt?"')
+  })
+})
+
+describe('decide-and-compose prompt (single call)', () => {
+  // Two sequential calls put a spoken line 12-18 s behind the words that prompted
+  // it. One prompt now carries the judgement and the wording together.
+  it('keeps the neutral decision criteria, the persona, and every reason\'s speaking guidance', () => {
+    const { system, user } = buildComposePrompt(ctx({ latestUtterance: { speaker: 'Manan', text: 'You have to do it this weekend.' } }))
+    expect(system).toContain('Weak reasons')
+    expect(system).toContain('Do not summarise periodically out of habit')
+    expect(system).toContain('UNACKNOWLEDGED_CONCESSION:')
+    expect(system).toContain('DIRECT_REQUEST:')
+    expect(system).toContain('"spokenText"')
+    expect(system).toMatch(/Language check:/)
+    expect(user).toContain('Just said:\nManan: You have to do it this weekend.')
+    expect(user).toContain('Should Urushi speak right now? If yes, write the line.')
+  })
+
+  it('when the pre-gate has already decided, asks only for the line', () => {
+    const { system, user } = buildComposePrompt(ctx({}), 'DIRECT_REQUEST')
+    expect(system).toContain('shouldIntervene must be true')
+    expect(system).toContain('Someone asked you directly to speak')
+    expect(system).not.toContain('Weak reasons')
+    expect(user.trim().endsWith('Write the line.')).toBe(true)
   })
 })

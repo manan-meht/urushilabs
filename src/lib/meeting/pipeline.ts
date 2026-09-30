@@ -21,7 +21,7 @@ import type {
   ParticipantPerspective,
 } from '@/lib/ai/meeting/mediationController'
 import {
-  decideIntervention,
+  decideAndCompose,
   generateInterventionSpeech,
   SKIP_INTERVENTION,
   type EngineContext,
@@ -52,8 +52,6 @@ import {
   recordIntervention,
   updateRuntimeState,
   type RuntimeState,
-  isFloorOccupied,
-  parseRuntimeState as parseRuntimeStateForFloor,
 } from '@/lib/meeting/runtimeState'
 import { isTrivialUtterance } from '@/lib/ai/meeting/interventionGuardrails'
 import { trackMeetingEvent, MEETING_ANALYTICS_EVENTS, recordMeetingUsage } from '@/lib/analytics/meetingEvents'
@@ -90,11 +88,12 @@ export async function ingestMeetingTranscriptSegment(input: IngestTranscriptInpu
   const meetingSession = session as DbMeetingSession
   if (meetingSession.status !== 'in_meeting') return
 
-  const { data: participants } = await db
-    .from('meeting_participants')
-    .select('*')
-    .eq('session_id', input.sessionId)
-    .order('participant_index')
+  // Independent reads go out together: every sequential round trip here is
+  // time added to Urushi's reply.
+  const [{ data: participants }, echo] = await Promise.all([
+    db.from('meeting_participants').select('*').eq('session_id', input.sessionId).order('participant_index'),
+    isEchoOfUrushi(db, input.sessionId, input.content),
+  ])
 
   const participantList = (participants ?? []) as DbMeetingParticipant[]
   const matchedParticipant = input.providerParticipantId
@@ -109,7 +108,7 @@ export async function ingestMeetingTranscriptSegment(input: IngestTranscriptInpu
   // Urushi's own synthesized audio. Left unfiltered, Urushi ingests its own
   // words as an unidentified participant — inflating speaking time, polluting
   // circularity detection, and letting it react to itself. Drop those here.
-  if (await isEchoOfUrushi(db, input.sessionId, input.content)) return
+  if (echo) return
 
   const sequenceNumber = await nextSequenceNumber(db, input.sessionId)
 
@@ -127,16 +126,6 @@ export async function ingestMeetingTranscriptSegment(input: IngestTranscriptInpu
     ended_at: input.endedAt,
   })
 
-  await recordMeetingUsage(db, input.sessionId, { transcriptSegmentIncrement: 1 })
-
-  // Heuristic agreement-affirmation detection: a trivial "yes"-style reply from an
-  // identified participant, while a proposed-but-unconfirmed agreement is awaiting
-  // them, counts as affirmation. Never inferred from silence or from an
-  // unidentified speaker (spec §25).
-  if (matchedParticipant && isTrivialUtterance(input.content) && AFFIRMATION_PATTERN.test(input.content.trim())) {
-    await tryAffirmPendingAgreement(db, input.sessionId, meetingSession.case_id, matchedParticipant.id)
-  }
-
   // Every utterance updates the running stats (word share, questions, heat)
   // whether or not a deliberation follows. Read-modify-write on the pipeline's
   // own keys only; a collision between two segments in the same instant costs
@@ -145,7 +134,18 @@ export async function ingestMeetingTranscriptSegment(input: IngestTranscriptInpu
     parseRuntimeState((meetingSession as unknown as { runtime_state?: unknown }).runtime_state),
     { speaker: speakerName, text: input.content },
   )
-  await mergeRuntimeState(db, input.sessionId, controllerFields(state))
+
+  // Heuristic agreement-affirmation detection: a trivial "yes"-style reply from an
+  // identified participant, while a proposed-but-unconfirmed agreement is awaiting
+  // them, counts as affirmation. Never inferred from silence or from an
+  // unidentified speaker (spec §25).
+  const affirms = matchedParticipant && isTrivialUtterance(input.content) && AFFIRMATION_PATTERN.test(input.content.trim())
+
+  await Promise.all([
+    recordMeetingUsage(db, input.sessionId, { transcriptSegmentIncrement: 1 }),
+    mergeRuntimeState(db, input.sessionId, controllerFields(state)),
+    affirms ? tryAffirmPendingAgreement(db, input.sessionId, meetingSession.case_id, matchedParticipant.id) : Promise.resolve(),
+  ])
 
   // One deliberation at a time. With streaming transcription segments land
   // every second or two, and each used to start its own decision pipeline —
@@ -360,17 +360,20 @@ async function runMediationController(
     },
   }
 
-  // ── Stage A: should Urushi speak at all? ───────────────────────────────────
+  // ── One call: should Urushi speak, and what does she say? ─────────────────
   let decision: InterventionDecision
+  let spokenText = ''
   try {
-    decision = await decideIntervention(ctx)
+    const composed = await decideAndCompose(ctx)
+    decision = composed.decision
+    spokenText = composed.spokenText ?? ''
   } catch (err) {
     console.error('[meeting pipeline] intervention decision failed:', err)
     await mergeRuntimeState(db, session.id, controllerFields(state))
     return
   }
 
-  if (!decision.shouldIntervene) {
+  if (!decision.shouldIntervene || !spokenText) {
     // Record near-misses so thresholds can be tuned against real meetings
     // (spec §25). Only worth storing when the engine actually deliberated —
     // trivial utterances would otherwise flood the table.
@@ -393,42 +396,29 @@ async function runMediationController(
     return
   }
 
-  // Say you are coming in BEFORE you come in.
-  //
-  // From this point to audible speech is Stage B, TTS synthesis and delivery —
-  // ten seconds or more, on top of the ~13s Recall already took to hand us the
-  // transcript. A chat line now gives the room a cue to yield that the audio
-  // alone arrives far too late to give. Best-effort: a failed cue must never
-  // stop the intervention itself.
-  // The camera tile flips first; it is what people are actually looking at.
-  await writeBotStatus(db, session.id, 'thinking')
-
-  try {
-    const cueProvider = getMeetingBotProvider()
-    if (cueProvider.isConfigured() && session.provider_bot_id) {
-      await cueProvider.sendChatMessage({
-        providerBotId: session.provider_bot_id,
-        message: "Urushi: I'd like to come in on that.",
-      })
+  // Say you are coming in as you come in. The tile flips and a chat line goes
+  // out while the audio is synthesised; neither is awaited, because every
+  // awaited call here is a second the room spends waiting for a point that is
+  // already ageing. A failed cue never stops the intervention itself.
+  void writeBotStatus(db, session.id, 'thinking')
+  void (async () => {
+    try {
+      const cueProvider = getMeetingBotProvider()
+      if (cueProvider.isConfigured() && session.provider_bot_id) {
+        await cueProvider.sendChatMessage({
+          providerBotId: session.provider_bot_id,
+          message: "Urushi: I'd like to come in on that.",
+        })
+      }
+    } catch (err) {
+      console.warn('[meeting pipeline] could not send about-to-speak cue:', err instanceof Error ? err.message : err)
     }
-  } catch (err) {
-    console.warn('[meeting pipeline] could not send about-to-speak cue:', err instanceof Error ? err.message : err)
-  }
-
-  // ── Stage B: what does Urushi actually say? ────────────────────────────────
-  let spokenText: string
-  try {
-    spokenText = await generateInterventionSpeech(ctx, decision)
-  } catch (err) {
-    console.error('[meeting pipeline] intervention speech failed:', err)
-    await mergeRuntimeState(db, session.id, controllerFields(state))
-    return
-  }
+  })()
 
   const reason = decision.reason!
 
   // ── Has the room moved on? ─────────────────────────────────────────────────
-  // Two model calls have passed since the trigger. If people kept talking, the
+  // A model call has passed since the trigger. If people kept talking, the
   // line was written for a moment that is gone: regenerate it against what was
   // just said, and let the model decline. A direct request ("Urushi, what do
   // you think?") is never dropped — silence there reads as a fault.
@@ -658,17 +648,12 @@ export async function speakInMeeting(
   )
   const voiceProfile = getVoiceProfile(resolved)
 
-  // Wait for a pause, then speak. Recall's speech_on/off and partial
-  // transcripts keep runtime_state.speakingNow current; poll it for a short
-  // window and prefer to start into a gap. If no gap comes, speak anyway:
-  // interrupting is part of a mediator's job, and the alternative — a chat
-  // message in a voice call — was tried and read as Urushi having gone
-  // silent. In one session every intervention after the introduction took
-  // that path, because a live argument never offered a four-second silence.
+  // No waiting for a pause. Two versions of a floor wait were tried: at four
+  // seconds a live argument never cleared and every line fell back to chat;
+  // at 1.5 s it still added up to five seconds to a point that was already
+  // ten seconds old. By the time Urushi has something to say, the only thing
+  // that makes it land is saying it now. A mediator interrupts.
   const db = getServiceClient()
-  const floorClear = await waitForClearFloor(session.id)
-  if (!floorClear) console.warn('[meeting pipeline] no pause within the wait; interrupting')
-
   await writeBotStatus(db, session.id, 'speaking')
 
   try {
@@ -719,25 +704,3 @@ async function writeBotStatus(
   }
 }
 
-/** How long to wait for a gap before interrupting. Short: the point is already seconds old. */
-const FLOOR_WAIT_MS = 5_000
-const FLOOR_POLL_MS = 500
-
-/**
- * Re-reads runtime_state until nobody is speaking or the wait runs out.
- *
- * Re-read on every poll rather than trusting the session row this function was
- * handed: that row is a snapshot from before two model calls and TTS, and the
- * whole point is that the floor moves in that time.
- */
-async function waitForClearFloor(sessionId: string): Promise<boolean> {
-  const db = getServiceClient()
-  const deadline = Date.now() + FLOOR_WAIT_MS
-  for (;;) {
-    const { data } = await db.from('meeting_sessions').select('runtime_state').eq('id', sessionId).maybeSingle()
-    const state = parseRuntimeStateForFloor((data as { runtime_state?: unknown } | null)?.runtime_state)
-    if (!isFloorOccupied(state, Date.now())) return true
-    if (Date.now() >= deadline) return false
-    await new Promise((r) => setTimeout(r, FLOOR_POLL_MS))
-  }
-}
