@@ -332,6 +332,14 @@ describe('Test 7 — human override', () => {
     const override = applyOverride({ mode: 'STEP_IN' }, NOW)
     expect(preGate(ctx({ state, override, now: NOW + 2000 })).proceed).toBe(true)
   })
+
+  it('answers a STEP_IN rather than letting Stage A veto it', () => {
+    // "Urushi, what do you think?" set STEP_IN and was then judged by Stage A
+    // as an ordinary utterance, which decided the floor was not worth taking.
+    // A participant asked twice in a live meeting and got silence both times.
+    const override = applyOverride({ mode: 'STEP_IN' }, NOW)
+    expect(preGate(ctx({ override, now: NOW + 2000 }))).toEqual({ proceed: true, forcedReason: 'DIRECT_REQUEST' })
+  })
 })
 
 // ─── Test 8: Hinglish / auto-switch ──────────────────────────────────────────

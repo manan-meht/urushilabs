@@ -143,8 +143,12 @@ export function preGate(ctx: EngineContext): PreGateResult {
     return { proceed: true, forcedReason: 'ESCALATION' }
   }
 
-  // An explicit invitation is honoured immediately.
-  if (override.mode === 'STEP_IN') return { proceed: true }
+  // An explicit invitation is honoured immediately — and answered. This used
+  // to return a bare proceed, which sent "Urushi, what do you think?" to Stage A
+  // as an ordinary utterance, and Stage A judged the floor not worth taking.
+  // Live, a participant asked twice and got silence both times. Being asked
+  // is the reason; the model does not get to overrule it.
+  if (override.mode === 'STEP_IN') return { proceed: true, forcedReason: 'DIRECT_REQUEST' }
 
   // Being asked by name is never rationed either.
   //

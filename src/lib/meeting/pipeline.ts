@@ -478,6 +478,15 @@ async function runMediationController(
     suppressed: false,
   })
 
+  // STEP_IN is an invitation to speak once, and it has now been answered. Left
+  // set, the next ninety seconds of utterances would each read as a direct
+  // request and Urushi would interrupt on every line.
+  if (override.mode === 'STEP_IN') {
+    await db.from('meeting_sessions')
+      .update({ participation_override: 'NORMAL', participation_override_expires_at: null })
+      .eq('id', session.id)
+  }
+
   await recordMeetingUsage(db, session.id, { interventionIncrement: 1 })
   await trackMeetingEvent(db, {
     caseId: session.case_id,
