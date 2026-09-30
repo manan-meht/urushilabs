@@ -649,22 +649,16 @@ export async function speakInMeeting(
   )
   const voiceProfile = getVoiceProfile(resolved)
 
-  // Do not play audio over a human. Recall's speech_on/off and partial
+  // Wait for a pause, then speak. Recall's speech_on/off and partial
   // transcripts keep runtime_state.speakingNow current; poll it for a short
-  // window and only speak into a clear floor. If it never clears, the words
-  // still land as a chat message — heard, not shouted over someone.
+  // window and prefer to start into a gap. If no gap comes, speak anyway:
+  // interrupting is part of a mediator's job, and the alternative — a chat
+  // message in a voice call — was tried and read as Urushi having gone
+  // silent. In one session every intervention after the introduction took
+  // that path, because a live argument never offered a four-second silence.
   const db = getServiceClient()
   const floorClear = await waitForClearFloor(session.id)
-  if (!floorClear) {
-    console.warn('[meeting pipeline] floor never cleared; delivering as chat only')
-    try {
-      await provider.sendChatMessage({ providerBotId: session.provider_bot_id, message: spokenText })
-    } catch (err) {
-      console.error('[meeting pipeline] failed to deliver intervention as chat:', err)
-    }
-    await writeBotStatus(db, session.id, 'listening')
-    return
-  }
+  if (!floorClear) console.warn('[meeting pipeline] no pause within the wait; interrupting')
 
   await writeBotStatus(db, session.id, 'speaking')
 
@@ -716,9 +710,9 @@ async function writeBotStatus(
   }
 }
 
-/** How long to wait for a gap before giving up and using chat. */
-const FLOOR_WAIT_MS = 12_000
-const FLOOR_POLL_MS = 1_500
+/** How long to wait for a gap before interrupting. Short: the point is already seconds old. */
+const FLOOR_WAIT_MS = 5_000
+const FLOOR_POLL_MS = 500
 
 /**
  * Re-reads runtime_state until nobody is speaking or the wait runs out.

@@ -316,10 +316,22 @@ export function secondsSinceUrushiSpoke(state: RuntimeState, now: number = Date.
   return (now - state.urushiLastSpokeAt) / 1000
 }
 
-/** A speech_on with no speech_off after this long is treated as a missed event. */
-const STALE_SPEECH_ON_MS = 45_000
-/** A partial transcript this recent means someone is still mid-sentence. */
-const PARTIAL_IS_LIVE_MS = 4_000
+/**
+ * A speech_on with no speech_off after this long is treated as a missed event.
+ * Streaming transcription sends speech_on/off around every phrase (782 events
+ * in a six-minute meeting), so a real turn refreshes this constantly and a
+ * missed speech_off should not hold the floor for long.
+ */
+const STALE_SPEECH_ON_MS = 8_000
+/**
+ * A partial transcript this recent means someone is still mid-sentence. This
+ * is the length of pause Urushi waits for. At 4 s, in a live argument with
+ * partials landing every half second, the floor never once read as clear and
+ * every intervention fell back to a chat message nobody saw: "Urushi's voice
+ * is gone". 1.5 s is a breath between sentences, which is where a human
+ * mediator comes in too.
+ */
+const PARTIAL_IS_LIVE_MS = 1_500
 
 export function markSpeaking(
   state: RuntimeState,

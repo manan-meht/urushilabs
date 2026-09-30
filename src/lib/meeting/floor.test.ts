@@ -15,9 +15,11 @@ describe('who has the floor', () => {
   })
 
   it('treats a recent partial transcript as someone mid-sentence', () => {
+    // 1.5 s: a breath between sentences. At 4 s a live argument never read as
+    // clear and every intervention fell back to chat.
     const s = markPartial(EMPTY_RUNTIME_STATE, t0)
-    expect(isFloorOccupied(s, t0 + 3_000)).toBe(true)
-    expect(isFloorOccupied(s, t0 + 6_000)).toBe(false)
+    expect(isFloorOccupied(s, t0 + 1_000)).toBe(true)
+    expect(isFloorOccupied(s, t0 + 2_000)).toBe(false)
   })
 
   it('does not stay muted forever after a missed speech_off', () => {
