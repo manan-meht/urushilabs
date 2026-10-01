@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { DbMeetingParticipant, DbMeetingSession, MeetingFinalReport, MeetingStatus } from '@/lib/db/types'
+import { EmailReportForm } from './EmailReportForm'
 
-type ParticipantRow = Pick<DbMeetingParticipant, 'id' | 'participant_index' | 'name' | 'is_initiator' | 'context_submitted_at' | 'consented_at' | 'invited_at'>
+type ParticipantRow = Pick<DbMeetingParticipant, 'id' | 'participant_index' | 'name' | 'email' | 'is_initiator' | 'context_submitted_at' | 'consented_at' | 'invited_at'>
 
 interface Props {
   sessionId: string
@@ -44,7 +45,7 @@ interface StatusResponse {
     failureReason: string | null
     finalReport: MeetingFinalReport | null
   }
-  participants: Array<{ id: string; name: string; isInitiator: boolean; contextSubmitted: boolean; consented: boolean; invited: boolean }>
+  participants: Array<{ id: string; name: string; email: string | null; isInitiator: boolean; contextSubmitted: boolean; consented: boolean; invited: boolean }>
 }
 
 export function MeetingStatusView({ sessionId, caseReference, session: initialSession, participants: initialParticipants }: Props) {
@@ -65,6 +66,7 @@ export function MeetingStatusView({ sessionId, caseReference, session: initialSe
     participants: initialParticipants.map((p) => ({
       id: p.id,
       name: p.name,
+      email: p.email ?? null,
       isInitiator: p.is_initiator,
       contextSubmitted: Boolean(p.context_submitted_at),
       consented: Boolean(p.consented_at),
@@ -228,7 +230,12 @@ export function MeetingStatusView({ sessionId, caseReference, session: initialSe
       </div>
 
       {session.status === 'completed' && session.finalReport ? (
-        <MeetingReportSection report={session.finalReport} />
+        <MeetingReportSection
+          report={session.finalReport}
+          sessionId={sessionId}
+          caseReference={caseReference}
+          suggestedRecipients={participants.map((p) => p.email).filter((e): e is string => Boolean(e))}
+        />
       ) : (
         <>
           <section className="mb-6">
@@ -354,9 +361,44 @@ export function MeetingStatusView({ sessionId, caseReference, session: initialSe
   )
 }
 
-function MeetingReportSection({ report }: { report: MeetingFinalReport }) {
+function MeetingReportSection({
+  report,
+  sessionId,
+  caseReference,
+  suggestedRecipients,
+}: {
+  report: MeetingFinalReport
+  sessionId: string
+  caseReference: string
+  suggestedRecipients: string[]
+}) {
+  const [emailOpen, setEmailOpen] = useState(false)
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2">
+        <a
+          href={`/meeting/${caseReference}/report?print=1`}
+          target="_blank"
+          rel="noopener"
+          className="inline-flex items-center gap-1.5 text-label-sm px-3 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors"
+        >
+          <span className="material-symbols-outlined text-[18px]">download</span>
+          Download PDF
+        </a>
+        <button
+          type="button"
+          onClick={() => setEmailOpen((o) => !o)}
+          className="inline-flex items-center gap-1.5 text-label-sm px-3 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors"
+        >
+          <span className="material-symbols-outlined text-[18px]">mail</span>
+          Email report
+        </button>
+      </div>
+
+      {emailOpen && (
+        <EmailReportForm sessionId={sessionId} suggestedRecipients={suggestedRecipients} onClose={() => setEmailOpen(false)} />
+      )}
+
       {report.safetyNote && (
         <div className="bg-error-container/40 border border-error-container rounded-xl p-4 flex items-start gap-2">
           <span className="material-symbols-outlined text-error text-[20px] shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>

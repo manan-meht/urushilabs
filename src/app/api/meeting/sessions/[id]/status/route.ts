@@ -16,7 +16,7 @@ export async function GET(
 
   const { data: participants } = await db
     .from('meeting_participants')
-    .select('id, participant_index, name, is_initiator, context_submitted_at, consented_at, invited_at')
+    .select('id, participant_index, name, email, is_initiator, context_submitted_at, consented_at, invited_at')
     .eq('session_id', id)
     .order('participant_index')
 
@@ -36,6 +36,7 @@ export async function GET(
     participants: (participants ?? []).map((p) => ({
       id: p.id,
       name: p.name,
+      email: p.email ?? null,
       isInitiator: p.is_initiator,
       contextSubmitted: Boolean(p.context_submitted_at),
       consented: Boolean(p.consented_at),

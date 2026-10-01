@@ -41,7 +41,7 @@ export default async function MeetingStatusPage({
 
   const { data: participants } = await db
     .from('meeting_participants')
-    .select('id, participant_index, name, is_initiator, context_submitted_at, consented_at, invited_at')
+    .select('id, participant_index, name, email, is_initiator, context_submitted_at, consented_at, invited_at')
     .eq('session_id', session.id)
     .order('participant_index')
 
@@ -53,7 +53,7 @@ export default async function MeetingStatusPage({
           sessionId={session.id}
           caseReference={reference}
           session={session as DbMeetingSession}
-          participants={(participants ?? []) as Array<Pick<DbMeetingParticipant, 'id' | 'participant_index' | 'name' | 'is_initiator' | 'context_submitted_at' | 'consented_at' | 'invited_at'>>}
+          participants={(participants ?? []) as Array<Pick<DbMeetingParticipant, 'id' | 'participant_index' | 'name' | 'email' | 'is_initiator' | 'context_submitted_at' | 'consented_at' | 'invited_at'>>}
         />
       </main>
       <SiteFooter />
