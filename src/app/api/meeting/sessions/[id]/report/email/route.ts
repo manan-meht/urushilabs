@@ -7,7 +7,7 @@ import { sendEmail, isEmailConfigured } from '@/lib/notifications/sendEmail'
 import { trackMeetingEvent } from '@/lib/analytics/meetingEvents'
 import { createClient } from '@/lib/supabase/server'
 
-export const MEETING_REPORT_EMAILED = 'meeting_report_emailed'
+const MEETING_REPORT_EMAILED = 'meeting_report_emailed'
 /** Sends per case per hour. Each send carries up to MAX_RECIPIENTS addresses. */
 const SENDS_PER_HOUR = 10
 
